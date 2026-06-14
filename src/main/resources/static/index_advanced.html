@@ -1,0 +1,2238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CollabFlow - Task Management & Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+		
+		
+		/* Loading button styles */
+		.btn-loading {
+		    opacity: 0.7;
+		    pointer-events: none;
+		    position: relative;
+		}
+		.btn-loading::after {
+		    content: '';
+		    position: absolute;
+		    width: 16px;
+		    height: 16px;
+		    top: 50%;
+		    right: 12px;
+		    margin-top: -8px;
+		    border: 2px solid white;
+		    border-top-color: transparent;
+		    border-radius: 50%;
+		    animation: spin 0.6s linear infinite;
+		}
+		@keyframes spin {
+		    to { transform: rotate(360deg); }
+		}
+
+		/* Disabled button */
+		button:disabled {
+		    opacity: 0.6;
+		    cursor: not-allowed;
+		}
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --primary-50: #eef2ff;
+            --sidebar-bg: #15192e;
+            --sidebar-bg-light: #1e2440;
+            --surface: #ffffff;
+            --bg: #f4f5fa;
+            --border: #e5e7eb;
+            --text: #1f2330;
+            --text-muted: #6b7280;
+            --radius: 12px;
+            --shadow-sm: 0 1px 2px 0 rgba(16,24,40,0.05);
+            --shadow-md: 0 4px 12px -2px rgba(16,24,40,0.08), 0 2px 4px -2px rgba(16,24,40,0.04);
+            --shadow-lg: 0 12px 32px -8px rgba(16,24,40,0.14);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ===== Toasts ===== */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 20px;
+            border-radius: 12px;
+            color: white;
+            z-index: 1000;
+            animation: slideIn 0.35s cubic-bezier(.16,1,.3,1);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            max-width: 380px;
+            backdrop-filter: blur(8px);
+        }
+        .toast i { font-size: 18px; }
+        .toast-success { background: linear-gradient(135deg, #10b981, #059669); }
+        .toast-error { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .toast-info { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+        .toast-warning { background: linear-gradient(135deg, #f59e0b, #d97706); }
+
+        @keyframes slideIn {
+            from { transform: translateX(120%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fadeOut {
+            to { transform: translateX(120%); opacity: 0; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse { animation: pulse 1.2s infinite; }
+
+        /* ===== Status & priority badges ===== */
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: .02em;
+            text-transform: uppercase;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .status-badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-AVAILABLE { background: #ecfdf5; color: #047857; }
+        .status-AVAILABLE::before { background: #10b981; }
+        .status-IN_PROGRESS { background: #fffbeb; color: #b45309; }
+        .status-IN_PROGRESS::before { background: #f59e0b; }
+        .status-COMPLETED { background: #eff6ff; color: #1d4ed8; }
+        .status-COMPLETED::before { background: #3b82f6; }
+
+        /* ===== Task cards ===== */
+        .priority-LOW { border-left: 4px solid #10b981; }
+        .priority-MEDIUM { border-left: 4px solid #f59e0b; }
+        .priority-HIGH { border-left: 4px solid #ef4444; }
+        .priority-URGENT { border-left: 4px solid #7c3aed; background: linear-gradient(135deg, #faf5ff 0%, #ffffff 60%); }
+
+        .task-card {
+            transition: all 0.25s cubic-bezier(.16,1,.3,1);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--surface);
+        }
+        .task-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--primary-light);
+        }
+
+        /* ===== Chat ===== */
+        .chat-message { animation: fadeIn 0.3s ease; margin-bottom: 14px; display: flex; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .message-right { justify-content: flex-end; }
+        .message-left { justify-content: flex-start; }
+        .message-bubble-right {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            display: inline-block;
+            padding: 10px 16px;
+            border-radius: 18px;
+            border-bottom-right-radius: 4px;
+            max-width: 70%;
+            box-shadow: var(--shadow-sm);
+            font-size: 14px;
+            line-height: 1.45;
+        }
+        .message-bubble-left {
+            background: #ffffff;
+            color: var(--text);
+            display: inline-block;
+            padding: 10px 16px;
+            border-radius: 18px;
+            border-bottom-left-radius: 4px;
+            max-width: 70%;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border);
+            font-size: 14px;
+            line-height: 1.45;
+        }
+
+        .online-dot {
+            width: 9px;
+            height: 9px;
+            background: #10b981;
+            border-radius: 50%;
+            display: inline-block;
+            margin-left: 6px;
+            box-shadow: 0 0 0 2px white;
+        }
+
+        /* ===== Sidebar nav ===== */
+        .sidebar {
+            background: linear-gradient(180deg, var(--sidebar-bg) 0%, #0f1224 100%);
+        }
+        .nav-item {
+            color: #b6bbd4;
+            font-weight: 500;
+            font-size: 14px;
+            position: relative;
+        }
+        .nav-item i { color: #8489ad; transition: color .2s ease; }
+        .nav-item:hover {
+            background: rgba(255,255,255,0.06) !important;
+            color: #fff;
+        }
+        .nav-item:hover i { color: var(--primary-light); }
+        .nav-item.bg-gray-700 {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
+            color: #fff;
+            box-shadow: var(--shadow-md);
+        }
+        .nav-item.bg-gray-700 i { color: #fff; }
+
+        .user-item {
+            transition: all 0.2s ease;
+            border-bottom: 1px solid var(--border) !important;
+        }
+        .user-item:hover {
+            background: var(--primary-50) !important;
+            transform: translateX(2px);
+        }
+
+        /* ===== Scrollbars ===== */
+        .scrollable, #usersList, #groupChatMessages, #privateChatMessages {
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+        /* ===== Loading spinner ===== */
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* ===== Modals ===== */
+        .modal {
+            backdrop-filter: blur(6px);
+            background: rgba(15, 18, 36, 0.55) !important;
+            animation: fadeInBg 0.2s ease;
+        }
+        @keyframes fadeInBg { from { opacity: 0; } to { opacity: 1; } }
+        .modal > div {
+            animation: modalPop 0.25s cubic-bezier(.16,1,.3,1);
+            border-radius: 16px !important;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid var(--border);
+        }
+        @keyframes modalPop {
+            from { opacity: 0; transform: translateY(12px) scale(.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* ===== Buttons & inputs ===== */
+        button {
+            transition: all 0.2s cubic-bezier(.16,1,.3,1);
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        input, select, textarea {
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--primary) !important;
+        }
+
+        /* ===== Layout shell ===== */
+        .app-bg {
+            background: var(--bg);
+        }
+        .surface-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+        }
+        .stat-card {
+            transition: all 0.25s cubic-bezier(.16,1,.3,1);
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        /* Topbar for main content */
+        .topbar {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* Auth screens */
+        .auth-shell {
+            background: radial-gradient(circle at 20% 20%, rgba(99,102,241,0.15), transparent 40%),
+                        radial-gradient(circle at 80% 80%, rgba(129,140,248,0.12), transparent 40%),
+                        var(--bg);
+        }
+        .auth-card {
+            border: 1px solid var(--border);
+        }
+        .auth-input {
+            border: 1px solid var(--border);
+            background: #fafafe;
+        }
+        .auth-input:focus {
+            background: #fff;
+            box-shadow: 0 0 0 4px var(--primary-50);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #fff;
+            box-shadow: var(--shadow-sm);
+        }
+        .btn-primary:hover {
+            box-shadow: 0 6px 16px -4px rgba(99,102,241,0.5);
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); transition: transform .25s ease; }
+            .sidebar.sidebar-open { transform: translateX(0); }
+            .main-content { margin-left: 0 !important; }
+        }
+    </style>
+</head>
+<body class="app-bg">
+
+	<!-- Login Container -->
+	<div id="loginContainer" class="min-h-screen flex items-center justify-center auth-shell px-4">
+	    <div class="bg-white auth-card rounded-2xl shadow-xl p-8 w-full max-w-md">
+	        <div class="text-center mb-8">
+	            <div class="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+	                <i class="fas fa-tasks text-2xl text-white"></i>
+	            </div>
+	            <h1 class="text-2xl font-extrabold text-gray-900 tracking-tight">CollabFlow</h1>
+	            <p class="text-gray-500 mt-1 text-sm">Task Management & Collaboration</p>
+	        </div>
+	        
+			<form id="loginForm" onsubmit="event.preventDefault(); testLogin();">
+			    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Email address</label>
+			    <div class="relative mb-4">
+			        <i class="fas fa-envelope absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+			        <input type="email" id="loginEmail" placeholder="you@company.com" required 
+			               class="auth-input w-full pl-10 pr-3 py-2.5 rounded-lg focus:outline-none">
+			    </div>
+			    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Password</label>
+			    <div class="relative mb-5">
+			        <i class="fas fa-lock absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+			        <input type="password" id="loginPassword" placeholder="••••••••" required 
+			               class="auth-input w-full pl-10 pr-3 py-2.5 rounded-lg focus:outline-none">
+			    </div>
+			    <button type="submit" class="btn-primary w-full py-2.5 rounded-lg font-semibold text-sm">
+			        Sign In
+			    </button>
+			</form>
+	        
+	        <div class="text-center mt-5">
+	            <a href="#" id="showRegister" class="text-indigo-600 hover:text-indigo-700 text-sm font-medium">Don't have an account? <span class="font-semibold">Register</span></a>
+	        </div>
+	    </div>
+	</div>
+
+<!-- Register Container -->
+<div id="registerContainer" class="min-h-screen flex items-center justify-center hidden auth-shell px-4">
+    <div class="bg-white auth-card rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <div class="text-center mb-6">
+            <div class="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <i class="fas fa-user-plus text-2xl text-white"></i>
+            </div>
+            <h1 class="text-2xl font-extrabold text-gray-900 tracking-tight">Create Account</h1>
+            <p class="text-gray-500 text-sm mt-1">Join CollabFlow today</p>
+        </div>
+        <form id="registerForm">
+            <div class="relative mb-3">
+                <i class="fas fa-user absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input type="text" id="regFullName" placeholder="Full Name" required class="auth-input w-full pl-10 pr-3 py-2.5 rounded-lg focus:outline-none">
+            </div>
+            <div class="relative mb-3">
+                <i class="fas fa-envelope absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input type="email" id="regEmail" placeholder="Email" required class="auth-input w-full pl-10 pr-3 py-2.5 rounded-lg focus:outline-none">
+            </div>
+            <div class="relative mb-3">
+                <i class="fas fa-lock absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input type="password" id="regPassword" placeholder="Password (min 6 characters)" required class="auth-input w-full pl-10 pr-3 py-2.5 rounded-lg focus:outline-none">
+            </div>
+            <div class="relative mb-3">
+                <i class="fas fa-building absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input type="text" id="regTenantName" placeholder="Workspace Name" required class="auth-input w-full pl-10 pr-3 py-2.5 rounded-lg focus:outline-none">
+            </div>
+            <div class="relative mb-5">
+                <i class="fas fa-globe absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input type="text" id="regSubdomain" placeholder="Subdomain (e.g., mycompany)" required class="auth-input w-full pl-10 pr-3 py-2.5 rounded-lg focus:outline-none">
+            </div>
+            <button type="submit" class="btn-primary w-full py-2.5 rounded-lg font-semibold text-sm">
+                <i class="fas fa-user-plus mr-2"></i>Create Account
+            </button>
+        </form>
+        <div class="text-center mt-5">
+            <a href="#" id="showLogin" class="text-indigo-600 hover:text-indigo-700 text-sm font-medium">Already have an account? <span class="font-semibold">Login</span></a>
+        </div>
+    </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboardContainer" class="hidden">
+    <!-- Sidebar -->
+    <div class="sidebar fixed left-0 top-0 h-full w-64 text-white shadow-xl z-20">
+        <div class="p-6 border-b border-white/10">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-xl flex items-center justify-center shadow-lg">
+                    <i class="fas fa-tasks text-white"></i>
+                </div>
+                <span class="text-xl font-extrabold tracking-tight">CollabFlow</span>
+            </div>
+            <p class="text-xs text-gray-400 mt-3 flex items-center" id="workspaceName"></p>
+        </div>
+        
+        <nav class="mt-4 px-3">
+            <div onclick="showSection('dashboard')" class="nav-item py-3 px-3 rounded-lg cursor-pointer transition-all mb-1 flex items-center gap-3 bg-gray-700">
+                <i class="fas fa-chart-line w-5"></i><span>Dashboard</span>
+            </div>
+            <div onclick="showSection('tasks')" class="nav-item py-3 px-3 rounded-lg cursor-pointer transition-all mb-1 flex items-center gap-3">
+                <i class="fas fa-tasks w-5"></i><span>All Tasks</span>
+            </div>
+            <div onclick="showSection('myTasks')" class="nav-item py-3 px-3 rounded-lg cursor-pointer transition-all mb-1 flex items-center gap-3">
+                <i class="fas fa-user-check w-5"></i><span>My Tasks</span>
+            </div>
+            <div onclick="showSection('groupChat')" class="nav-item py-3 px-3 rounded-lg cursor-pointer transition-all mb-1 flex items-center gap-3">
+                <i class="fas fa-comments w-5"></i><span>Group Chat</span>
+            </div>
+            <div onclick="showSection('privateChat')" class="nav-item py-3 px-3 rounded-lg cursor-pointer transition-all mb-1 flex items-center gap-3">
+                <i class="fas fa-envelope w-5"></i><span>Private Chat</span>
+            </div>
+            <div onclick="showSection('files')" class="nav-item py-3 px-3 rounded-lg cursor-pointer transition-all mb-1 flex items-center gap-3">
+                <i class="fas fa-folder-open w-5"></i><span>File Transfer</span>
+            </div>
+        </nav>
+        
+        <div class="absolute bottom-0 w-full p-5 border-t border-white/10 bg-black/10">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
+                    <i class="fas fa-user text-white"></i>
+                </div>
+                <div class="overflow-hidden">
+                    <p class="text-sm font-semibold truncate" id="userName"></p>
+                    <p class="text-xs text-gray-400" id="userRole"></p>
+                </div>
+            </div>
+            <button onclick="logout()" class="w-full bg-red-500/10 text-red-400 py-2 rounded-lg hover:bg-red-500 hover:text-white transition-all text-sm font-medium">
+                <i class="fas fa-sign-out-alt mr-2"></i>Logout
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="ml-64 p-8 main-content">
+        <!-- Dashboard Section -->
+        <div id="dashboardSection" class="section">
+            <div class="mb-6">
+                <h2 class="text-2xl font-extrabold text-gray-900 tracking-tight">Dashboard</h2>
+                <p class="text-gray-500 mt-1">Welcome back, <span id="welcomeName" class="font-semibold text-gray-700"></span> 👋</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
+                <div class="stat-card surface-card p-6 border-l-4 border-purple-500">
+                    <div class="flex items-center justify-between">
+                        <div><p class="text-gray-500 text-sm font-medium">Total Tasks</p><p id="totalTasks" class="text-3xl font-extrabold text-gray-900 mt-1">0</p></div>
+                        <div class="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center"><i class="fas fa-tasks text-xl text-purple-500"></i></div>
+                    </div>
+                </div>
+                <div class="stat-card surface-card p-6 border-l-4 border-green-500">
+                    <div class="flex items-center justify-between">
+                        <div><p class="text-gray-500 text-sm font-medium">Available</p><p id="availableTasks" class="text-3xl font-extrabold text-gray-900 mt-1">0</p></div>
+                        <div class="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center"><i class="fas fa-clock text-xl text-green-500"></i></div>
+                    </div>
+                </div>
+                <div class="stat-card surface-card p-6 border-l-4 border-yellow-500">
+                    <div class="flex items-center justify-between">
+                        <div><p class="text-gray-500 text-sm font-medium">In Progress</p><p id="inProgressTasks" class="text-3xl font-extrabold text-gray-900 mt-1">0</p></div>
+                        <div class="w-12 h-12 rounded-xl bg-yellow-50 flex items-center justify-center"><i class="fas fa-spinner fa-spin text-xl text-yellow-500"></i></div>
+                    </div>
+                </div>
+                <div class="stat-card surface-card p-6 border-l-4 border-blue-500">
+                    <div class="flex items-center justify-between">
+                        <div><p class="text-gray-500 text-sm font-medium">Completed</p><p id="completedTasks" class="text-3xl font-extrabold text-gray-900 mt-1">0</p></div>
+                        <div class="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center"><i class="fas fa-check-circle text-xl text-blue-500"></i></div>
+                    </div>
+                </div>
+            </div>
+            <div class="surface-card p-6">
+                <h3 class="font-bold text-gray-900 mb-4">Task Distribution</h3>
+                <canvas id="taskChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+        
+        <!-- Tasks Section -->
+        <div id="tasksSection" class="section hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-extrabold text-gray-900 tracking-tight">All Tasks</h2>
+                <button onclick="showCreateTaskModal()" class="btn-primary px-5 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2">
+                    <i class="fas fa-plus"></i> Create Task
+                </button>
+            </div>
+            <div id="tasksList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </div>
+        
+        <!-- My Tasks Section -->
+        <div id="myTasksSection" class="section hidden">
+            <h2 class="text-2xl font-extrabold text-gray-900 tracking-tight mb-6">My Tasks</h2>
+            <div id="myTasksList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </div>
+        
+        <!-- Group Chat Section -->
+        <div id="groupChatSection" class="section hidden">
+            <div class="surface-card h-[calc(100vh-140px)] flex flex-col overflow-hidden">
+                <div class="p-4 border-b bg-gradient-to-r from-indigo-50 to-purple-50">
+                    <h3 class="font-bold text-gray-900"><i class="fas fa-users mr-2 text-indigo-500"></i>Group Chat</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">Connect with your team in real-time</p>
+                </div>
+                <div id="groupChatMessages" class="flex-1 p-4 overflow-y-auto bg-gray-50"></div>
+				<div class="p-4 border-t flex gap-2 bg-white">
+				    <input type="file" id="groupFileInput" style="display: none;" onchange="sendGroupFile()">
+				    <button onclick="document.getElementById('groupFileInput').click()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0">
+				        <i class="fas fa-paperclip"></i>
+				    </button>
+				    <input type="text" id="groupMessageInput" placeholder="Type your message..." class="flex-1 border border-gray-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+				    <button onclick="sendGroupMessage()" class="btn-primary px-5 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2">
+				        <i class="fas fa-paper-plane"></i>
+				        <span class="hidden sm:inline">Send</span>
+				    </button>
+				</div>
+        
+        <!-- Private Chat Section -->
+        <div id="privateChatSection" class="section hidden">
+            <div class="flex flex-col md:flex-row gap-6 h-[calc(100vh-140px)]">
+                <div class="w-full md:w-1/3 surface-card overflow-hidden flex flex-col">
+                    <div class="p-4 border-b bg-gradient-to-r from-indigo-50 to-purple-50">
+                        <h3 class="font-bold text-gray-900"><i class="fas fa-users mr-2 text-indigo-500"></i>Team Members</h3>
+                    </div>
+                    <div id="usersList" class="overflow-y-auto flex-1"></div>
+                </div>
+                <div class="w-full md:w-2/3 surface-card flex flex-col overflow-hidden">
+                    <div id="privateChatHeader" class="p-4 border-b bg-gradient-to-r from-indigo-50 to-purple-50">
+                        <p class="text-gray-500 text-center text-sm">Select a team member to start chatting</p>
+                    </div>
+                    <div id="privateChatMessages" class="flex-1 p-4 overflow-y-auto bg-gray-50"></div>
+                    <div class="p-4 border-t bg-white">
+                        <div class="flex gap-3">
+                            <input type="text" id="privateMessageInput" placeholder="Type your message..." class="flex-1 border border-gray-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                            <button onclick="sendPrivateMessage()" class="btn-primary px-5 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center w-12">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- File Transfer Section -->
+        <div id="filesSection" class="section hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-extrabold text-gray-900 tracking-tight">File Transfer Center</h2>
+                <button onclick="showUploadFileModal()" class="btn-primary px-5 py-2.5 rounded-lg font-semibold text-sm">
+                    <i class="fas fa-upload mr-2"></i>Upload File
+                </button>
+            </div>
+            
+            <div class="surface-card overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50 border-b border-gray-200">
+                            <tr>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">File Name</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Size</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Uploaded By</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Uploaded At</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Downloads</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fileList">
+                            <tr><td colspan="7" class="text-center py-8 text-gray-500">Loading files...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Task Modal -->
+<div id="createTaskModal" class="fixed inset-0 modal hidden items-center justify-center z-50">
+    <div class="bg-white w-full max-w-md p-6 transform transition-all">
+        <div class="flex justify-between items-center mb-5">
+            <h3 class="text-lg font-bold text-gray-900">Create New Task</h3>
+            <button onclick="hideCreateTaskModal()" class="text-gray-400 hover:text-gray-600 w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="mb-3">
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Title</label>
+            <input type="text" id="taskTitle" placeholder="Enter task title" class="w-full border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+        </div>
+        <div class="mb-3">
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Description</label>
+            <textarea id="taskDescription" placeholder="Describe the task..." rows="3" class="w-full border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100"></textarea>
+        </div>
+        <div class="mb-3">
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Priority</label>
+            <select id="taskPriority" class="w-full border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                <option value="LOW">Low</option>
+                <option value="MEDIUM" selected>Medium</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+            </select>
+        </div>
+        <div class="mb-5">
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Due Date</label>
+            <input type="date" id="taskDueDate" class="w-full border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+        </div>
+        <div class="flex gap-3">
+            <button onclick="createTask()" class="btn-primary flex-1 py-2.5 rounded-lg font-semibold text-sm">
+                <i class="fas fa-check mr-2"></i>Create
+            </button>
+            <button onclick="hideCreateTaskModal()" class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg font-semibold text-sm hover:bg-gray-200 transition-all">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Complete Task Modal -->
+<div id="completeTaskModal" class="fixed inset-0 modal hidden items-center justify-center z-50">
+    <div class="bg-white w-full max-w-md p-6">
+        <div class="flex justify-between items-center mb-5">
+            <h3 class="text-lg font-bold text-gray-900">Complete Task</h3>
+            <button onclick="hideCompleteTaskModal()" class="text-gray-400 hover:text-gray-600 w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center"><i class="fas fa-times"></i></button>
+        </div>
+        <form id="completeTaskForm">
+            <input type="hidden" id="completeTaskId">
+            <div class="mb-4">
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Completion Description</label>
+                <textarea id="completionDescription" rows="4" placeholder="What did you accomplish? Any challenges? What was the outcome?" required class="w-full border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100"></textarea>
+            </div>
+            <div class="mb-5">
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Attachment (Optional)</label>
+                <input type="file" id="taskAttachment" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" class="w-full border border-gray-200 rounded-lg p-2 text-sm">
+                <p class="text-xs text-gray-400 mt-1.5">Max size: 10MB. Supported: PDF, DOC, TXT, Images</p>
+            </div>
+            <div class="flex gap-3">
+                <button type="submit" class="flex-1 bg-green-500 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-green-600 transition-all shadow-sm">
+                    <i class="fas fa-check mr-2"></i>Complete Task
+                </button>
+                <button type="button" onclick="hideCompleteTaskModal()" class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg font-semibold text-sm hover:bg-gray-200 transition-all">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- View Task Details Modal -->
+<div id="viewTaskModal" class="fixed inset-0 modal hidden items-center justify-center z-50">
+    <div class="bg-white w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-5">
+            <h3 class="text-lg font-bold text-gray-900">Task Details</h3>
+            <button onclick="hideViewTaskModal()" class="text-gray-400 hover:text-gray-600 w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="viewTaskContent"></div>
+        <button onclick="hideViewTaskModal()" class="mt-5 w-full bg-gray-100 text-gray-700 py-2.5 rounded-lg font-semibold text-sm hover:bg-gray-200 transition-all">Close</button>
+    </div>
+</div>
+
+
+<!-- Upload File Modal -->
+<div id="uploadFileModal" class="fixed inset-0 modal hidden items-center justify-center z-50">
+    <div class="bg-white w-full max-w-md p-6">
+        <div class="flex justify-between items-center mb-5">
+            <h3 class="text-lg font-bold text-gray-900">Upload File</h3>
+            <button onclick="hideUploadFileModal()" class="text-gray-400 hover:text-gray-600 w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center"><i class="fas fa-times"></i></button>
+        </div>
+        <form id="uploadFileForm">
+            <div class="mb-4">
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Select File (Max 300MB)</label>
+                <input type="file" id="uploadFile" required class="w-full border border-gray-200 rounded-lg p-2 text-sm">
+            </div>
+            <div class="mb-5">
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Description (Optional)</label>
+                <textarea id="fileDescription" rows="2" placeholder="Add a description..." class="w-full border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100"></textarea>
+            </div>
+            <div class="flex gap-3">
+                <button type="submit" class="btn-primary flex-1 py-2.5 rounded-lg font-semibold text-sm">
+                    <i class="fas fa-upload mr-2"></i>Upload
+                </button>
+                <button type="button" onclick="hideUploadFileModal()" class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg font-semibold text-sm hover:bg-gray-200 transition-all">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Task Modal (Update during progress) -->
+<div id="editTaskModal" class="fixed inset-0 modal hidden items-center justify-center z-50">
+    <div class="bg-white w-full max-w-md p-6 transform transition-all">
+        <div class="flex justify-between items-center mb-5">
+            <h3 class="text-lg font-bold text-gray-900">
+                <i class="fas fa-edit text-yellow-500 mr-2"></i>Update Task
+            </h3>
+            <button onclick="hideEditTaskModal()" class="text-gray-400 hover:text-gray-600 w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <input type="hidden" id="editTaskId">
+        <div class="mb-3">
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Title</label>
+            <input type="text" id="editTaskTitle" class="w-full border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+        </div>
+        <div class="mb-3">
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Description</label>
+            <textarea id="editTaskDescription" rows="3" class="w-full border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100"></textarea>
+        </div>
+        <div class="mb-3">
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Priority</label>
+            <select id="editTaskPriority" class="w-full border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+            </select>
+        </div>
+        <div class="mb-5">
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Due Date</label>
+            <input type="date" id="editTaskDueDate" class="w-full border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+        </div>
+        <div class="flex gap-3">
+            <button onclick="updateTask()" class="flex-1 bg-yellow-500 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-yellow-600 transition-all shadow-sm">
+                <i class="fas fa-save mr-2"></i>Update
+            </button>
+            <button onclick="hideEditTaskModal()" class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg font-semibold text-sm hover:bg-gray-200 transition-all">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentUser = null;
+    let jwtToken = null;
+    let stompClient = null;
+    let currentChatUser = null;
+	let privateMessageQueue = [];
+    let taskChart = null;
+    
+    function showToast(message, type) {
+        const icons = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle', warning: 'fa-exclamation-triangle' };
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = `<i class="fas ${icons[type] || 'fa-info-circle'}"></i><span>${message}</span>`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+    
+	
+
+	function attachFileToGroupChat() {
+	    const input = document.createElement('input');
+	    input.type = 'file';
+	    input.accept = '*/*';
+	    input.onchange = (e) => {
+	        const file = e.target.files[0];
+	        if (file && file.size <= 20 * 1024 * 1024) {
+	            pendingFile = file;
+	            pendingFileType = 'group';
+	            showToast(`File "${file.name}" ready to send. Type a message and click Send.`, 'info');
+	        } else {
+	            showToast('File size exceeds 20MB limit', 'error');
+	        }
+	    };
+	    input.click();
+	}
+	
+	function attachFileToPrivateChat() {
+	    const input = document.createElement('input');
+	    input.type = 'file';
+	    input.accept = '*/*';
+	    input.onchange = (e) => {
+	        const file = e.target.files[0];
+	        if (file && file.size <= 20 * 1024 * 1024) {
+	            pendingFile = file;
+	            pendingFileType = 'private';
+	            showToast(`File "${file.name}" ready to send. Type a message and click Send.`, 'info');
+	        } else {
+	            showToast('File size exceeds 20MB limit', 'error');
+	        }
+	    };
+	    input.click();
+	}
+	
+   
+    
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        showToast('Creating account...', 'info');
+        
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                fullName: document.getElementById('regFullName').value,
+                email: document.getElementById('regEmail').value,
+                password: document.getElementById('regPassword').value,
+                tenantName: document.getElementById('regTenantName').value,
+                subdomain: document.getElementById('regSubdomain').value
+            })
+        });
+        if (response.ok) { 
+            showToast('Registration successful! Please login.', 'success'); 
+            showLogin(); 
+        } else { 
+            showToast('Registration failed! Email may already exist', 'error'); 
+        }
+    });
+    
+    document.getElementById('showRegister').onclick = () => { document.getElementById('loginContainer').classList.add('hidden'); document.getElementById('registerContainer').classList.remove('hidden'); };
+    document.getElementById('showLogin').onclick = () => { document.getElementById('registerContainer').classList.add('hidden'); document.getElementById('loginContainer').classList.remove('hidden'); };
+    
+    function showLogin() {
+        document.getElementById('loginContainer').classList.remove('hidden');
+        document.getElementById('registerContainer').classList.add('hidden');
+        document.getElementById('dashboardContainer').classList.add('hidden');
+    }
+    
+    function showDashboard() {
+        document.getElementById('loginContainer').classList.add('hidden');
+        document.getElementById('registerContainer').classList.add('hidden');
+        document.getElementById('dashboardContainer').classList.remove('hidden');
+        document.getElementById('userName').innerText = currentUser.fullName;
+        document.getElementById('userRole').innerText = currentUser.role;
+        document.getElementById('welcomeName').innerText = currentUser.fullName.split(' ')[0];
+        document.getElementById('workspaceName').innerHTML = `<i class="fas fa-building mr-1"></i>${currentUser.tenantName || 'Workspace'}`;
+        loadDashboard();
+        loadTasks();
+        loadMyTasks();
+        connectWebSocket();
+    }
+    
+    function logout() {
+        if (stompClient) stompClient.disconnect();
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        showToast('Logged out successfully', 'success');
+        location.reload();
+    }
+    
+    // Check existing session
+    const savedToken = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
+    if (savedToken && savedUser) {
+        jwtToken = savedToken;
+        currentUser = JSON.parse(savedUser);
+        showDashboard();
+    }
+    
+    // ========== DASHBOARD ==========
+    async function loadDashboard() {
+        const response = await fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+        const tasks = await response.json();
+        const total = tasks.length;
+        const available = tasks.filter(t => t.status === 'AVAILABLE').length;
+        const inProgress = tasks.filter(t => t.status === 'IN_PROGRESS').length;
+        const completed = tasks.filter(t => t.status === 'COMPLETED').length;
+        document.getElementById('totalTasks').innerText = total;
+        document.getElementById('availableTasks').innerText = available;
+        document.getElementById('inProgressTasks').innerText = inProgress;
+        document.getElementById('completedTasks').innerText = completed;
+        if (taskChart) taskChart.destroy();
+        taskChart = new Chart(document.getElementById('taskChart'), { type: 'doughnut', data: { labels: ['Available', 'In Progress', 'Completed'], datasets: [{ data: [available, inProgress, completed], backgroundColor: ['#10b981', '#f59e0b', '#3b82f6'] }] } });
+    }
+    
+    // ========== TASKS ==========
+	async function loadTasks() {
+	    const response = await fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+	    const tasks = await response.json();
+	    const container = document.getElementById('tasksList');
+	    if (tasks.length === 0) { container.innerHTML = '<div class="col-span-full text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-2"></i><p>No tasks available</p></div>'; return; }
+	    container.innerHTML = tasks.map(task => `
+	        <div class="task-card bg-white rounded-xl shadow-sm p-5 priority-${task.priority} transition-all">
+	            <div class="flex justify-between items-start mb-3">
+	                <h3 class="font-bold text-gray-800">${escapeHtml(task.title)}</h3>
+	                <span class="status-badge status-${task.status}">${task.status.replace('_', ' ')}</span>
+	            </div>
+	            <p class="text-sm text-gray-600 mb-3">${escapeHtml(task.description?.substring(0, 100) || 'No description')}${task.description?.length > 100 ? '...' : ''}</p>
+	            <div class="flex justify-between items-center text-xs text-gray-500 mb-3">
+	                <span><i class="fas fa-user mr-1"></i>Created: ${escapeHtml(task.createdByName)}</span>
+	                <span><i class="fas fa-flag mr-1"></i>${task.priority}</span>
+	            </div>
+	            ${task.takenBy ? `
+	            <div class="text-xs text-purple-600 mb-2">
+	                <i class="fas fa-hand-paper mr-1"></i>Working on: ${escapeHtml(task.takenByName)} 
+	                ${task.takenAt ? `(since ${new Date(task.takenAt).toLocaleDateString()})` : ''}
+	            </div>
+	            ` : ''}
+	            <div class="flex gap-2 mt-2">
+	                ${task.status === 'AVAILABLE' ? 
+	                    `<button onclick="takeTask(${task.id})" class="flex-1 bg-green-500 text-white py-2 rounded-lg text-sm hover:bg-green-600 transition-all"><i class="fas fa-hand-paper mr-1"></i>Take Task</button>` : ''}
+	                ${task.status === 'IN_PROGRESS' ? 
+	                    `<button onclick="showEditTaskModal(${task.id})" class="flex-1 bg-yellow-500 text-white py-2 rounded-lg text-sm hover:bg-yellow-600 transition-all"><i class="fas fa-edit mr-1"></i>Update</button>` : ''}
+	                ${task.status === 'IN_PROGRESS' && task.assignedTo === currentUser.id ? 
+	                    `<button onclick="showCompleteTaskModal(${task.id})" class="flex-1 bg-blue-500 text-white py-2 rounded-lg text-sm hover:bg-blue-600 transition-all"><i class="fas fa-check mr-1"></i>Complete</button>` : ''}
+	                ${task.status === 'COMPLETED' ? 
+	                    `<button onclick="viewTaskDetails(${task.id})" class="w-full bg-gray-500 text-white py-2 rounded-lg text-sm hover:bg-gray-600 transition-all"><i class="fas fa-info-circle mr-1"></i>View Details</button>` : ''}
+	            </div>
+	        </div>
+	    `).join('');
+	}
+
+
+    
+    async function loadMyTasks() {
+        const response = await fetch('/api/tasks/my-tasks', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+        const tasks = await response.json();
+        const container = document.getElementById('myTasksList');
+        if (tasks.length === 0) { container.innerHTML = '<div class="col-span-full text-center py-12 text-gray-500"><i class="fas fa-tasks text-4xl mb-2"></i><p>No tasks assigned to you</p></div>'; return; }
+        container.innerHTML = tasks.map(task => `
+            <div class="task-card bg-white rounded-xl shadow-sm p-5 priority-${task.priority}">
+                <div class="flex justify-between items-start mb-3">
+                    <h3 class="font-bold text-gray-800">${escapeHtml(task.title)}</h3>
+                    <span class="status-badge status-${task.status}">${task.status.replace('_', ' ')}</span>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">${escapeHtml(task.description?.substring(0, 100) || 'No description')}</p>
+                <div class="flex justify-between items-center text-xs text-gray-500 mb-3">
+                    <span><i class="fas fa-user mr-1"></i>Created by: ${escapeHtml(task.createdByName)}</span>
+                </div>
+                ${task.status === 'IN_PROGRESS' ? 
+                    `<button onclick="showCompleteTaskModal(${task.id})" class="mt-2 w-full bg-blue-500 text-white py-2 rounded-lg text-sm hover:bg-blue-600 transition-all"><i class="fas fa-check mr-1"></i>Complete Task</button>` : ''}
+                ${task.status === 'COMPLETED' ? 
+                    `<button onclick="viewTaskDetails(${task.id})" class="mt-2 w-full bg-gray-500 text-white py-2 rounded-lg text-sm hover:bg-gray-600 transition-all"><i class="fas fa-info-circle mr-1"></i>View Details</button>` : ''}
+            </div>
+        `).join('');
+    }
+    
+    async function takeTask(taskId) {
+        const response = await fetch(`/api/tasks/${taskId}/take`, { method: 'PUT', headers: { 'Authorization': `Bearer ${jwtToken}` } });
+        if (response.ok) { showToast('Task taken successfully!', 'success'); loadTasks(); loadMyTasks(); loadDashboard(); } 
+        else { showToast('Failed to take task', 'error'); }
+    }
+    
+    function showCreateTaskModal() { 
+        document.getElementById('createTaskModal').classList.remove('hidden'); 
+        document.getElementById('createTaskModal').style.display = 'flex'; 
+    }
+    function hideCreateTaskModal() { 
+        document.getElementById('createTaskModal').classList.add('hidden'); 
+        document.getElementById('createTaskModal').style.display = 'none'; 
+        document.getElementById('taskTitle').value = '';
+        document.getElementById('taskDescription').value = '';
+        document.getElementById('taskPriority').value = 'MEDIUM';
+        document.getElementById('taskDueDate').value = '';
+    }
+    
+    async function createTask() {
+        const title = document.getElementById('taskTitle').value.trim();
+        if (!title) { showToast('Please enter task title', 'error'); return; }
+        
+        const taskData = { 
+            title: title, 
+            description: document.getElementById('taskDescription').value, 
+            priority: document.getElementById('taskPriority').value, 
+            dueDate: document.getElementById('taskDueDate').value || null 
+        };
+        const response = await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${jwtToken}` }, body: JSON.stringify(taskData) });
+        if (response.ok) { 
+            showToast('Task created successfully!', 'success'); 
+            hideCreateTaskModal(); 
+            loadTasks(); 
+            loadDashboard(); 
+        } else { 
+            showToast('Failed to create task', 'error'); 
+        }
+    }
+    
+    // ========== WEBSOCKET CHAT ==========
+	
+	function connectWebSocket() {
+	    const socket = new SockJS('/ws');
+	    stompClient = Stomp.over(socket);
+	    
+	    // CRITICAL: Pass JWT token in connection headers
+	    const headers = {
+	        'Authorization': `Bearer ${jwtToken}`
+	    };
+	    
+	    stompClient.connect(headers, function(frame) {
+	        console.log('WebSocket connected with authentication!');
+	        showToast('Connected to chat', 'success');
+	        
+	        // Subscribe to group chat
+	        stompClient.subscribe(`/topic/group/${currentUser.tenantId}`, function(message) {
+	            const msg = JSON.parse(message.body);
+	            displayGroupMessage(msg);
+	        });
+	        
+	        // Subscribe to private messages
+	        stompClient.subscribe(`/user/queue/private`, function(message) {
+	            const msg = JSON.parse(message.body);
+	            console.log('Private message received:', msg);
+	            displayPrivateMessage(msg);
+	        });
+	        
+	        loadUsers();
+	        
+	    }, function(error) {
+	        console.error('WebSocket connection failed:', error);
+	        showToast('Chat connection failed', 'error');
+	    });
+	}
+
+	
+	let pendingFile = null;
+	let pendingFileType = null;
+
+	function attachFileToGroupChat() {
+	    const input = document.createElement('input');
+	    input.type = 'file';
+	    input.accept = '*/*';
+	    input.onchange = (e) => {
+	        const file = e.target.files[0];
+	        if (file && file.size <= 20 * 1024 * 1024) {
+	            pendingFile = file;
+	            pendingFileType = 'group';
+	            showToast(`File "${file.name}" ready to send. Type a message and click Send.`, 'info');
+	        } else {
+	            showToast('File size exceeds 20MB limit', 'error');
+	        }
+	    };
+	    input.click();
+	}
+
+	function attachFileToPrivateChat() {
+	    const input = document.createElement('input');
+	    input.type = 'file';
+	    input.accept = '*/*';
+	    input.onchange = (e) => {
+	        const file = e.target.files[0];
+	        if (file && file.size <= 20 * 1024 * 1024) {
+	            pendingFile = file;
+	            pendingFileType = 'private';
+	            showToast(`File "${file.name}" ready to send. Type a message and click Send.`, 'info');
+	        } else {
+	            showToast('File size exceeds 20MB limit', 'error');
+	        }
+	    };
+	    input.click();
+	}
+
+	// Update sendGroupMessage function
+	async function sendGroupMessage() {
+	    const message = document.getElementById('groupMessageInput').value.trim();
+	    const fileInput = document.getElementById('groupFileInput');
+	    const file = fileInput ? fileInput.files[0] : null;
+	    
+	    if (!message && !file) {
+	        showToast('Type a message or attach a file', 'error');
+	        return;
+	    }
+	    
+	    if (file) {
+	        const formData = new FormData();
+	        formData.append('file', file);
+	        if (message) formData.append('message', message);
+	        
+	        try {
+	            const response = await fetch('/api/chat/group/upload', {
+	                method: 'POST',
+	                headers: { 'Authorization': `Bearer ${jwtToken}` },
+	                body: formData
+	            });
+	            
+	            if (response.ok) {
+	                document.getElementById('groupMessageInput').value = '';
+	                if (fileInput) fileInput.value = '';
+	                showToast('File sent!', 'success');
+	            } else {
+	                showToast('Failed to send file', 'error');
+	            }
+	        } catch (error) {
+	            showToast('Error: ' + error.message, 'error');
+	        }
+	    } else if (message && stompClient && stompClient.connected) {
+	        stompClient.send('/app/chat.group.send', {}, JSON.stringify({
+	            message: message,
+	            isGroup: true
+	        }));
+	        document.getElementById('groupMessageInput').value = '';
+	    }
+	}
+	
+	
+	function sendPrivateMessage() {
+	    const message = document.getElementById('privateMessageInput').value.trim();
+	    if (!message || !stompClient || !stompClient.connected || !currentChatUser) {
+	        showToast('Select a user to chat', 'error');
+	        return;
+	    }
+	    
+	    const msg = { 
+	        receiverId: currentChatUser.id, 
+	        message: message, 
+	        isGroup: false 
+	    };
+	    
+	    stompClient.send('/app/chat.private.send', {}, JSON.stringify(msg));
+	    document.getElementById('privateMessageInput').value = '';
+	    
+	    // Display own message immediately
+	    const tempMsg = {
+	        senderId: currentUser.id,
+	        senderName: currentUser.fullName,
+	        message: message,
+	        createdAt: new Date().toISOString()
+	    };
+	    addMessageToPrivateChat(tempMsg);
+	}
+		
+		// Display group message
+
+		
+		function displayGroupMessage(msg) {
+		    const container = document.getElementById('groupChatMessages');
+		    const isOwn = msg.senderId === currentUser.id;
+		    
+		    container.innerHTML += `
+		        <div class="chat-message ${isOwn ? 'message-right' : 'message-left'}">
+		            <div class="${isOwn ? 'message-bubble-right' : 'message-bubble-left'}">
+		                ${!isOwn ? `<div class="text-xs font-semibold text-purple-600 mb-1">${escapeHtml(msg.senderName)}</div>` : ''}
+		                <div>${escapeHtml(msg.message)}</div>
+		                <div class="text-xs opacity-70 mt-1">${new Date().toLocaleTimeString()}</div>
+		            </div>
+		        </div>
+		    `;
+		    container.scrollTop = container.scrollHeight;
+		}
+    
+		// Append private message to chat (for received messages)
+		function appendPrivateMessage(msg) {
+		    const container = document.getElementById('privateChatMessages');
+		    const isOwn = msg.senderId === currentUser.id;
+		    
+		    container.innerHTML += `
+		        <div class="chat-message ${isOwn ? 'message-right' : 'message-left'}">
+		            <div class="${isOwn ? 'message-bubble-right' : 'message-bubble-left'}">
+		                <div>${escapeHtml(msg.message)}</div>
+		                <div class="text-xs opacity-70 mt-1">${new Date().toLocaleTimeString()}</div>
+		            </div>
+		        </div>
+		    `;
+		    container.scrollTop = container.scrollHeight;
+		}
+		
+		// Show browser notification
+		
+		
+		function showChatNotification(senderName, message) {
+		    // Show toast notification
+		    showToast(`💬 ${senderName}: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`, 'info');
+		    
+		    // Browser notification (if permitted)
+		    if (Notification.permission === 'granted') {
+		        new Notification(`New message from ${senderName}`, {
+		            body: message,
+		            icon: 'https://cdn-icons-png.flaticon.com/512/733/733585.png'
+		        });
+		    } else if (Notification.permission !== 'denied') {
+		        Notification.requestPermission();
+		    }
+		}
+		
+
+		// Append own private message (optimistic update)
+		function appendOwnPrivateMessage(message) {
+		    const container = document.getElementById('privateChatMessages');
+		    
+		    container.innerHTML += `
+		        <div class="chat-message message-right">
+		            <div class="message-bubble-right">
+		                <div>${escapeHtml(message)}</div>
+		                <div class="text-xs opacity-70 mt-1">${new Date().toLocaleTimeString()}</div>
+		            </div>
+		        </div>
+		    `;
+		    container.scrollTop = container.scrollHeight;
+		}
+	function displayPrivateMessage(msg) {
+	    console.log('Private message received:', msg);
+	    
+	    // Always show notification for messages from others
+	    if (msg.senderId !== currentUser.id) {
+	        showToast(`📩 New message from ${msg.senderName}`, 'info');
+	        // Play a subtle sound or vibration if needed
+	    }
+	    
+	    // Update users list to show unread indicator
+	    updateUserUnreadIndicator(msg.senderId);
+	    
+	    // If this message is for the currently open chat, display it immediately
+	    if (currentChatUser && (msg.senderId === currentChatUser.id || msg.senderId === currentUser.id)) {
+	        addMessageToPrivateChat(msg);
+	    }
+	    
+	    // Also update the conversation if the message is from the current chat user
+	    if (currentChatUser && msg.senderId === currentChatUser.id) {
+	        // Message already added above
+	        console.log('Message added to current chat');
+	    }
+	}
+
+	// New function to add message to private chat UI
+	function addMessageToPrivateChat(msg) {
+	    const container = document.getElementById('privateChatMessages');
+	    const isOwn = msg.senderId === currentUser.id;
+	    
+	    const messageHtml = `
+	        <div class="chat-message ${isOwn ? 'message-right' : 'message-left'}">
+	            <div class="${isOwn ? 'message-bubble-right' : 'message-bubble-left'}">
+	                <div>${escapeHtml(msg.message)}</div>
+	                <div class="text-xs opacity-70 mt-1">${new Date().toLocaleTimeString()}</div>
+	            </div>
+	        </div>
+	    `;
+	    
+	    container.insertAdjacentHTML('beforeend', messageHtml);
+	    container.scrollTop = container.scrollHeight;
+	}
+
+	
+
+	// Update unread indicator in users list
+	function updateUserUnreadIndicator(senderId) {
+	    // Don't show if chat is open with this user
+	    if (currentChatUser && currentChatUser.id === senderId) return;
+	    
+	    const userElement = document.querySelector(`.user-item[data-user-id='${senderId}']`);
+	    if (userElement && !userElement.querySelector('.unread-badge')) {
+	        const userNameSpan = userElement.querySelector('.user-name');
+	        if (userNameSpan) {
+	            const badge = document.createElement('span');
+	            badge.className = 'unread-badge ml-2 w-3 h-3 bg-red-500 rounded-full inline-block animate-pulse';
+	            badge.innerHTML = '●';
+	            userNameSpan.appendChild(badge);
+	        }
+	    }
+	}
+	
+    function displayMessageInPrivate(senderId, senderName, message, isOwn) {
+        const container = document.getElementById('privateChatMessages');
+        container.innerHTML += `
+            <div class="chat-message ${isOwn ? 'message-right' : 'message-left'}">
+                <div class="${isOwn ? 'message-bubble-right' : 'message-bubble-left'}">
+                    <div>${escapeHtml(message)}</div>
+                    <div class="text-xs opacity-70 mt-1">${new Date().toLocaleTimeString()}</div>
+                </div>
+            </div>
+        `;
+        container.scrollTop = container.scrollHeight;
+    }
+    
+	// Load users for private chat
+	async function loadUsers() {
+	    try {
+	        const response = await fetch('/api/users', {
+	            headers: { 'Authorization': `Bearer ${jwtToken}` }
+	        });
+	        
+	        if (response.ok) {
+	            const users = await response.json();
+	            const container = document.getElementById('usersList');
+	            
+	            if (users.length === 0) {
+	                container.innerHTML = `
+	                    <div class="text-center py-8 px-4">
+	                        <i class="fas fa-users text-4xl text-gray-300 mb-3"></i>
+	                        <p class="text-gray-500">No other users found</p>
+	                        <p class="text-xs text-gray-400 mt-2">Register another account to start chatting</p>
+	                    </div>
+	                `;
+	                return;
+	            }
+	            
+	            container.innerHTML = users.map(user => `
+	                <div class="user-item p-4 cursor-pointer border-b hover:bg-gray-50 transition-all" 
+	                     data-user-id="${user.id}" 
+	                     onclick="startPrivateChat(${user.id}, '${escapeHtml(user.name)}')">
+	                    <div class="flex items-center gap-3">
+	                        <div class="w-10 h-10 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold">
+	                            ${user.name.charAt(0).toUpperCase()}
+	                        </div>
+	                        <div class="flex-1">
+	                            <p class="user-name font-medium text-gray-800">${escapeHtml(user.name)}</p>
+	                            <p class="text-xs text-green-600 flex items-center"><span class="online-dot mr-1"></span>Online</p>
+	                        </div>
+	                        <i class="fas fa-chevron-right text-gray-300"></i>
+	                    </div>
+	                </div>
+	            `).join('');
+	        } else {
+	            console.error('Failed to load users');
+	            loadUsersFromTasks(); // Fallback
+	        }
+	    } catch (error) {
+	        console.error('Error loading users:', error);
+	        loadUsersFromTasks(); // Fallback
+	    }
+	}
+
+	// Fallback function using tasks
+	async function loadUsersFromTasks() {
+	    try {
+	        const response = await fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+	        const tasks = await response.json();
+	        const users = new Map();
+	        
+	        tasks.forEach(task => {
+	            if (task.createdBy && task.createdByName && task.createdBy !== currentUser.id) {
+	                users.set(task.createdBy, { id: task.createdBy, name: task.createdByName });
+	            }
+	            if (task.assignedTo && task.assignedToName && task.assignedTo !== currentUser.id) {
+	                users.set(task.assignedTo, { id: task.assignedTo, name: task.assignedToName });
+	            }
+	        });
+	        
+	        const container = document.getElementById('usersList');
+	        if (users.size === 0) {
+	            container.innerHTML = `
+	                <div class="text-center py-8 px-4">
+	                    <i class="fas fa-users text-4xl text-gray-300 mb-3"></i>
+	                    <p class="text-gray-500">No other users found</p>
+	                    <p class="text-xs text-gray-400 mt-2">Register another account or create tasks to see users</p>
+	                </div>
+	            `;
+	            return;
+	        }
+	        
+	        container.innerHTML = Array.from(users.values()).map(user => `
+	            <div class="user-item p-4 cursor-pointer border-b hover:bg-gray-50 transition-all" 
+	                 data-user-id="${user.id}" 
+	                 onclick="startPrivateChat(${user.id}, '${escapeHtml(user.name)}')">
+	                <div class="flex items-center gap-3">
+	                    <div class="w-10 h-10 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold">
+	                        ${user.name.charAt(0).toUpperCase()}
+	                    </div>
+	                    <div class="flex-1">
+	                        <p class="user-name font-medium text-gray-800">${escapeHtml(user.name)}</p>
+	                        <p class="text-xs text-green-600 flex items-center"><span class="online-dot mr-1"></span>Online</p>
+	                    </div>
+	                    <i class="fas fa-chevron-right text-gray-300"></i>
+	                </div>
+	            </div>
+	        `).join('');
+	    } catch (error) {
+	        console.error('Error loading users from tasks:', error);
+	    }
+	}
+			// Process queued messages when opening a chat
+			function processMessageQueue() {
+			    if (currentChatUser && privateMessageQueue.length > 0) {
+			        const pendingMessages = privateMessageQueue.filter(msg => msg.senderId === currentChatUser.id);
+			        pendingMessages.forEach(msg => {
+			            appendPrivateMessage(msg);
+			            // Remove from queue
+			            const index = privateMessageQueue.indexOf(msg);
+			            if (index > -1) privateMessageQueue.splice(index, 1);
+			        });
+			        // Clear unread indicator
+			        const userElement = document.querySelector(`.user-item[data-user-id='${currentChatUser.id}']`);
+			        if (userElement) {
+			            const badge = userElement.querySelector('.unread-badge');
+			            if (badge) badge.remove();
+			        }
+			    }
+			}
+
+			
+			
+			async function loadGroupChatHistory() {
+			    try {
+			        const response = await fetch('/api/chat/group/history', {
+			            headers: { 'Authorization': `Bearer ${jwtToken}` }
+			        });
+			        const messages = await response.json();
+			        const container = document.getElementById('groupChatMessages');
+			        container.innerHTML = '';
+			        
+			        messages.forEach(msg => {
+			            const isOwn = msg.senderId === currentUser.id;
+			            container.innerHTML += `
+			                <div class="chat-message ${isOwn ? 'message-right' : 'message-left'}">
+			                    <div class="${isOwn ? 'message-bubble-right' : 'message-bubble-left'}">
+			                        ${!isOwn ? `<div class="text-xs font-semibold text-purple-600 mb-1">${escapeHtml(msg.senderName)}</div>` : ''}
+			                        <div>${escapeHtml(msg.message)}</div>
+			                        <div class="text-xs opacity-70 mt-1">${new Date(msg.createdAt).toLocaleTimeString()}</div>
+			                    </div>
+			                </div>
+			            `;
+			        });
+			        container.scrollTop = container.scrollHeight;
+			    } catch (error) {
+			        console.error('Error loading group history:', error);
+			    }
+			}
+			
+			
+			document.getElementById('completeTaskForm').addEventListener('submit', async (e) => {
+			    e.preventDefault();
+			    
+			    const description = document.getElementById('completionDescription').value;
+			    const attachment = document.getElementById('taskAttachment').files[0];
+			    const submitBtn = e.submitter;
+			    
+			    if (!description) {
+			        showToast('❌ Please enter completion description', 'error');
+			        return;
+			    }
+			    
+			    const originalText = submitBtn?.innerHTML;
+			    if (submitBtn) {
+			        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Processing...';
+			        submitBtn.disabled = true;
+			    }
+			    
+			    showToast('📤 Completing task...', 'info');
+			    
+			    const formData = new FormData();
+			    formData.append('completionDescription', description);
+			    if (attachment) {
+			        formData.append('attachment', attachment);
+			    }
+			    
+			    try {
+			        const response = await fetch(`/api/tasks/${currentCompletingTaskId}/complete`, {
+			            method: 'PUT',
+			            headers: { 'Authorization': `Bearer ${jwtToken}` },
+			            body: formData
+			        });
+			        
+			        if (response.ok) {
+			            showToast('✅ Task completed successfully!', 'success');
+			            hideCompleteTaskModal();
+			            loadTasks();
+			            loadMyTasks();
+			            loadDashboard();
+			        } else {
+			            const error = await response.text();
+			            showToast('❌ Failed: ' + error, 'error');
+			        }
+			    } catch (error) {
+			        showToast('❌ Error: ' + error.message, 'error');
+			    } finally {
+			        if (submitBtn) {
+			            submitBtn.innerHTML = originalText;
+			            submitBtn.disabled = false;
+			        }
+			    }
+			});
+			
+			
+			async function updateTask() {
+			    const taskId = document.getElementById('editTaskId').value;
+			    const taskData = {
+			        title: document.getElementById('editTaskTitle').value,
+			        description: document.getElementById('editTaskDescription').value,
+			        priority: document.getElementById('editTaskPriority').value,
+			        dueDate: document.getElementById('editTaskDueDate').value || null
+			    };
+			    
+			    if (!taskData.title.trim()) {
+			        showToast('❌ Task title is required', 'error');
+			        return;
+			    }
+			    
+			    const btn = event?.target;
+			    const originalText = btn?.innerHTML;
+			    
+			    if (btn) {
+			        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Updating...';
+			        btn.disabled = true;
+			    }
+			    
+			    try {
+			        const response = await fetch(`/api/tasks/${taskId}/update`, {
+			            method: 'PUT',
+			            headers: {
+			                'Content-Type': 'application/json',
+			                'Authorization': `Bearer ${jwtToken}`
+			            },
+			            body: JSON.stringify(taskData)
+			        });
+			        
+			        if (response.ok) {
+			            showToast('✅ Task updated successfully!', 'success');
+			            hideEditTaskModal();
+			            loadTasks();
+			            loadMyTasks();
+			            loadDashboard();
+			        } else {
+			            const error = await response.text();
+			            showToast('❌ Failed to update: ' + error, 'error');
+			        }
+			    } catch (error) {
+			        showToast('❌ Error: ' + error.message, 'error');
+			    } finally {
+			        if (btn) {
+			            btn.innerHTML = originalText;
+			            btn.disabled = false;
+			        }
+			    }
+			}
+			
+			
+			document.getElementById('uploadFileForm').addEventListener('submit', async (e) => {
+			    e.preventDefault();
+			    
+			    const file = document.getElementById('uploadFile').files[0];
+			    const description = document.getElementById('fileDescription').value;
+			    const submitBtn = e.submitter;
+			    
+			    if (!file) {
+			        showToast('❌ Please select a file', 'error');
+			        return;
+			    }
+			    
+			    const originalText = submitBtn?.innerHTML;
+			    if (submitBtn) {
+			        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Uploading...';
+			        submitBtn.disabled = true;
+			    }
+			    
+			    const formData = new FormData();
+			    formData.append('file', file);
+			    if (description) formData.append('description', description);
+			    
+			    try {
+			        const response = await fetch('/api/files/upload', {
+			            method: 'POST',
+			            headers: { 'Authorization': `Bearer ${jwtToken}` },
+			            body: formData
+			        });
+			        
+			        if (response.ok) {
+			            showToast('✅ File uploaded successfully!', 'success');
+			            hideUploadFileModal();
+			            loadFiles();
+			        } else {
+			            const error = await response.json();
+			            showToast('❌ ' + (error.message || 'Upload failed'), 'error');
+			        }
+			    } catch (error) {
+			        showToast('❌ Error: ' + error.message, 'error');
+			    } finally {
+			        if (submitBtn) {
+			            submitBtn.innerHTML = originalText;
+			            submitBtn.disabled = false;
+			        }
+			    }
+			});
+
+
+		async function loadPrivateChatHistory(userId) {
+	    try {
+	        const response = await fetch(`/api/chat/private/history/${userId}`, {
+	            headers: { 'Authorization': `Bearer ${jwtToken}` }
+	        });
+	        const messages = await response.json();
+	        const container = document.getElementById('privateChatMessages');
+	        container.innerHTML = '';
+	        
+	        messages.forEach(msg => {
+	            const isOwn = msg.senderId === currentUser.id;
+	            container.innerHTML += `
+	                <div class="chat-message ${isOwn ? 'message-right' : 'message-left'}">
+	                    <div class="${isOwn ? 'message-bubble-right' : 'message-bubble-left'}">
+	                        <div>${escapeHtml(msg.message)}</div>
+	                        <div class="text-xs opacity-70 mt-1">${new Date(msg.createdAt).toLocaleTimeString()}</div>
+	                    </div>
+	                </div>
+	            `;
+	        });
+			   container.scrollTop = container.scrollHeight;
+			    } catch (error) {
+			        console.error('Error loading private history:', error);
+			    }
+			}
+			
+			
+    
+	async function startPrivateChat(userId, userName) {
+	    console.log('Starting chat with:', userName);
+	    
+	    currentChatUser = { id: userId, name: userName };
+	    
+	    // Update header
+	    document.getElementById('privateChatHeader').innerHTML = `
+	        <div class="flex items-center gap-3">
+	            <div class="w-10 h-10 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold">
+	                ${userName.charAt(0).toUpperCase()}
+	            </div>
+	            <div>
+	                <p class="font-bold text-gray-800">${escapeHtml(userName)}</p>
+	                <p class="text-xs text-green-600 flex items-center"><span class="online-dot mr-1"></span>Online</p>
+	            </div>
+	        </div>
+	    `;
+		 
+		// Clear unread indicator
+		const userElement = document.querySelector(`.user-item[data-user-id='${userId}']`);
+		    if (userElement) {
+		        const badge = userElement.querySelector('.unread-badge');
+		        if (badge) badge.remove();
+		    }
+			
+			 // Clear message container
+			    document.getElementById('privateChatMessages').innerHTML = '';
+			    
+			    // Load chat history
+			    await loadPrivateChatHistory(userId);
+			    
+			    // Process any queued messages for this user
+			    processMessageQueue();
+			    
+			    // Focus input
+			    document.getElementById('privateMessageInput').focus();
+			}
+			
+        loadPrivateChatHistory(userId);
+        
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    let currentCompletingTaskId = null;
+
+    function showCompleteTaskModal(taskId) {
+        currentCompletingTaskId = taskId;
+        document.getElementById('completeTaskModal').classList.remove('hidden');
+        document.getElementById('completeTaskModal').style.display = 'flex';
+        document.getElementById('completionDescription').value = '';
+        document.getElementById('taskAttachment').value = '';
+    }
+
+    function hideCompleteTaskModal() {
+        document.getElementById('completeTaskModal').classList.add('hidden');
+        document.getElementById('completeTaskModal').style.display = 'none';
+        currentCompletingTaskId = null;
+    }
+
+	document.getElementById('completeTaskForm').addEventListener('submit', async (e) => {
+	    e.preventDefault();
+	    
+	    const description = document.getElementById('completionDescription').value;
+	    const attachment = document.getElementById('taskAttachment').files[0];
+	    
+	    if (!description) {
+	        showToast('Please enter completion description', 'error');
+	        return;
+	    }
+	    
+	    showToast('Completing task...', 'info');
+	    
+	    const formData = new FormData();
+	    formData.append('completionDescription', description);
+	    if (attachment) {
+	        formData.append('attachment', attachment);
+	    }
+	    
+	    try {
+	        const response = await fetch(`/api/tasks/${currentCompletingTaskId}/complete`, {
+	            method: 'PUT',
+	            headers: { 'Authorization': `Bearer ${jwtToken}` },
+	            body: formData
+	        });
+	        
+	        if (response.ok) {
+	            showToast('Task completed successfully!', 'success');
+	            hideCompleteTaskModal();
+	            loadTasks();
+	            loadMyTasks();
+	            loadDashboard();
+	        } else {
+	            const error = await response.text();
+	            showToast('Failed to complete task: ' + error, 'error');
+	        }
+	    } catch (error) {
+	        console.error('Complete task error:', error);
+	        showToast('Error: ' + error.message, 'error');
+	    }
+	});
+	
+	
+	async function viewTaskDetails(taskId) {
+	    try {
+	        const response = await fetch(`/api/tasks/${taskId}`, {
+	            headers: { 'Authorization': `Bearer ${jwtToken}` }
+	        });
+	        const task = await response.json();
+	        
+	        console.log('Full task object:', task); // Debug: Check what data we have
+	        
+	        // Check if attachment exists
+	        const hasAttachment = task.attachmentUrl && task.attachmentUrl !== 'null' && task.attachmentUrl !== '';
+	        console.log('Has attachment:', hasAttachment);
+	        console.log('Attachment URL:', task.attachmentUrl);
+	        console.log('Attachment Name:', task.attachmentName);
+	        
+	        let downloadHtml = '';
+	        if (hasAttachment) {
+	            const downloadUrl = `/api/tasks/download/${task.id}`;
+	            const fileName = task.attachmentName || 'download';
+	            downloadHtml = `
+	                <div class="bg-blue-50 rounded-lg p-3 border-l-4 border-blue-500">
+	                    <label class="font-bold text-blue-700 block mb-2"><i class="fas fa-paperclip mr-2"></i>Attachment</label>
+	                    <a href="${downloadUrl}" class="text-blue-600 hover:underline flex items-center gap-2" 
+	                       onclick="event.preventDefault(); downloadFileViaApi(${task.id}, '${fileName}');">
+	                        <i class="fas fa-download"></i> Download ${fileName}
+	                    </a>
+	                </div>
+	            `;
+	        }
+	        
+			const content = `
+			           <div class="space-y-4">
+			               <div class="border-b pb-2">
+			                   <label class="font-bold text-gray-700 block mb-1">Task Title</label>
+			                   <p class="text-gray-800">${escapeHtml(task.title)}</p>
+			               </div>
+			               <div class="border-b pb-2">
+			                   <label class="font-bold text-gray-700 block mb-1">Description</label>
+			                   <p class="text-gray-600">${escapeHtml(task.description || 'No description provided')}</p>
+			               </div>
+			               <div class="flex justify-between">
+			                   <div><label class="font-bold text-gray-700 block mb-1">Status</label><span class="status-badge status-${task.status}">${task.status.replace('_', ' ')}</span></div>
+			                   <div><label class="font-bold text-gray-700 block mb-1">Priority</label><p class="text-gray-800">${task.priority}</p></div>
+			               </div>
+			               ${task.takenBy ? `
+			               <div class="bg-purple-50 rounded-lg p-3 border-l-4 border-purple-500">
+			                   <label class="font-bold text-purple-700 block mb-1"><i class="fas fa-user-check mr-1"></i>Task Taken By</label>
+			                   <p class="text-purple-800">${escapeHtml(task.takenByName)}</p>
+			                   ${task.takenAt ? `<p class="text-xs text-purple-600 mt-1">Started on: ${new Date(task.takenAt).toLocaleString()}</p>` : ''}
+			               </div>
+			               ` : ''}
+			               ${task.completionDescription ? `
+			               <div class="bg-green-50 rounded-lg p-3 border-l-4 border-green-500">
+			                   <label class="font-bold text-green-700 block mb-1"><i class="fas fa-check-circle mr-1"></i>Completion Description</label>
+			                   <p class="text-green-800">${escapeHtml(task.completionDescription)}</p>
+			               </div>
+			               ` : ''}
+			               ${downloadHtml}
+			               <div class="text-sm text-gray-500 pt-2 border-t">
+			                   <p><i class="fas fa-user mr-1"></i>Created by: ${escapeHtml(task.createdByName)}</p>
+			                   <p><i class="fas fa-calendar mr-1"></i>Created at: ${new Date(task.createdAt).toLocaleString()}</p>
+			                   ${task.completedAt ? `<p><i class="fas fa-check-circle mr-1"></i>Completed at: ${new Date(task.completedAt).toLocaleString()}</p>` : ''}
+			               </div>
+			           </div>
+			       `;
+				   
+				   
+				    document.getElementById('viewTaskContent').innerHTML = content;
+				           document.getElementById('viewTaskModal').classList.remove('hidden');
+				           document.getElementById('viewTaskModal').style.display = 'flex';
+				       } catch (error) {
+				           console.error('Error loading task details:', error);
+				           showToast('Error loading task details', 'error');
+				       }
+				   }
+				   
+				   
+				   async function takeTask(taskId) {
+				       const btn = event?.target;
+				       const originalText = btn?.innerHTML;
+				       
+				       if (btn) {
+				           btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Taking...';
+				           btn.disabled = true;
+				       }
+				       
+				       try {
+				           const response = await fetch(`/api/tasks/${taskId}/take`, { 
+				               method: 'PUT', 
+				               headers: { 'Authorization': `Bearer ${jwtToken}` } 
+				           });
+				           
+				           if (response.ok) { 
+				               showToast('✅ Task taken successfully!', 'success'); 
+				               loadTasks(); 
+				               loadMyTasks(); 
+				               loadDashboard(); 
+				           } else { 
+				               const error = await response.text();
+				               showToast('❌ Failed to take task: ' + error, 'error'); 
+				           }
+				       } catch (error) {
+				           showToast('❌ Error: ' + error.message, 'error');
+				       } finally {
+				           if (btn) {
+				               btn.innerHTML = originalText;
+				               btn.disabled = false;
+				           }
+				       }
+				   }
+				   
+				   async function createTask() {
+				       const title = document.getElementById('taskTitle').value.trim();
+				       if (!title) { 
+				           showToast('❌ Please enter task title', 'error'); 
+				           return; 
+				       }
+				       
+				       const btn = event?.target;
+				       const originalText = btn?.innerHTML;
+				       
+				       if (btn) {
+				           btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Creating...';
+				           btn.disabled = true;
+				       }
+				       
+				       const taskData = { 
+				           title: title, 
+				           description: document.getElementById('taskDescription').value, 
+				           priority: document.getElementById('taskPriority').value, 
+				           dueDate: document.getElementById('taskDueDate').value || null 
+				       };
+				       
+				       try {
+				           const response = await fetch('/api/tasks', { 
+				               method: 'POST', 
+				               headers: { 
+				                   'Content-Type': 'application/json', 
+				                   'Authorization': `Bearer ${jwtToken}` 
+				               }, 
+				               body: JSON.stringify(taskData) 
+				           });
+				           
+				           if (response.ok) { 
+				               showToast('✅ Task created successfully!', 'success'); 
+				               hideCreateTaskModal(); 
+				               loadTasks(); 
+				               loadDashboard(); 
+				           } else { 
+				               showToast('❌ Failed to create task', 'error'); 
+				           }
+				       } catch (error) {
+				           showToast('❌ Error: ' + error.message, 'error');
+				       } finally {
+				           if (btn) {
+				               btn.innerHTML = originalText;
+				               btn.disabled = false;
+				           }
+				       }
+				   }
+				   
+				   async function completeTask(taskId) {
+				       const description = prompt('Enter completion description:');
+				       if (!description) return;
+				       
+				       // Show loading on the button
+				       const btn = event?.target;
+				       const originalText = btn?.innerHTML;
+				       if (btn) {
+				           btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Completing...';
+				           btn.disabled = true;
+				       }
+				       
+				       try {
+				           const response = await fetch(`/api/tasks/${taskId}/complete?completionDescription=${encodeURIComponent(description)}`, {
+				               method: 'PUT',
+				               headers: { 'Authorization': `Bearer ${jwtToken}` }
+				           });
+				           
+				           if (response.ok) {
+				               showToast('✅ Task completed successfully!', 'success');
+				               loadTasks();
+				               loadMyTasks();
+				               loadDashboard();
+				           } else {
+				               const error = await response.text();
+				               showToast('❌ Failed to complete task: ' + error, 'error');
+				           }
+				       } catch (error) {
+				           showToast('❌ Error: ' + error.message, 'error');
+				       } finally {
+				           if (btn) {
+				               btn.innerHTML = originalText;
+				               btn.disabled = false;
+				           }
+				       }
+				   }
+				   
+				   
+			// Add download helper function
+			async function downloadFileViaApi(taskId, fileName) {
+			    try {
+			        showToast('Downloading file...', 'info');
+			        const response = await fetch(`/api/tasks/download/${taskId}`, {
+			            headers: { 'Authorization': `Bearer ${jwtToken}` }
+			        });
+			        
+			        if (response.ok) {
+			            const blob = await response.blob();
+			            const url = window.URL.createObjectURL(blob);
+			            const a = document.createElement('a');
+			            a.href = url;
+			            a.download = fileName;
+			            document.body.appendChild(a);
+			            a.click();
+			            document.body.removeChild(a);
+			            window.URL.revokeObjectURL(url);
+			            showToast('Download started!', 'success');
+			        } else {
+			            showToast('File not found', 'error');
+			        }
+			    } catch (error) {
+			        console.error('Download error:', error);
+			        showToast('Error downloading file', 'error');
+			    }
+			}
+			
+    function hideViewTaskModal() {
+        document.getElementById('viewTaskModal').classList.add('hidden');
+        document.getElementById('viewTaskModal').style.display = 'none';
+    }
+    
+	function showSection(section) {
+	    document.querySelectorAll('.section').forEach(el => el.classList.add('hidden'));
+	    document.getElementById(`${section}Section`).classList.remove('hidden');
+	    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('bg-gray-700'));
+	    if (event?.target) {
+	        event.target.closest('.nav-item')?.classList.add('bg-gray-700');
+	    }
+	    
+	    if (section === 'dashboard') loadDashboard();
+	    if (section === 'tasks') loadTasks();
+	    if (section === 'myTasks') loadMyTasks();
+	    if (section === 'groupChat') loadGroupChatHistory();
+		if (section === 'files') loadFiles();  // ← ADD THIS LINE
+
+	}
+	let editingTaskId = null;
+
+	function showEditTaskModal(taskId) {
+	    editingTaskId = taskId;
+	    fetch(`/api/tasks/${taskId}`, { 
+	        headers: { 'Authorization': `Bearer ${jwtToken}` } 
+	    })
+	    .then(response => response.json())
+	    .then(task => {
+	        document.getElementById('editTaskId').value = task.id;
+	        document.getElementById('editTaskTitle').value = task.title;
+	        document.getElementById('editTaskDescription').value = task.description || '';
+	        document.getElementById('editTaskPriority').value = task.priority;
+	        document.getElementById('editTaskDueDate').value = task.dueDate || '';
+	        document.getElementById('editTaskModal').classList.remove('hidden');
+	        document.getElementById('editTaskModal').style.display = 'flex';
+	    })
+	    .catch(error => showToast('Error loading task details', 'error'));
+	}
+
+	function hideEditTaskModal() {
+	    document.getElementById('editTaskModal').classList.add('hidden');
+	    document.getElementById('editTaskModal').style.display = 'none';
+	    editingTaskId = null;
+	}
+
+	async function updateTask() {
+	    const taskId = document.getElementById('editTaskId').value;
+	    const taskData = {
+	        title: document.getElementById('editTaskTitle').value,
+	        description: document.getElementById('editTaskDescription').value,
+	        priority: document.getElementById('editTaskPriority').value,
+	        dueDate: document.getElementById('editTaskDueDate').value || null
+	    };
+	    
+	    if (!taskData.title.trim()) {
+	        showToast('Task title is required', 'error');
+	        return;
+	    }
+	    
+	    try {
+	        const response = await fetch(`/api/tasks/${taskId}/update`, {
+	            method: 'PUT',
+	            headers: {
+	                'Content-Type': 'application/json',
+	                'Authorization': `Bearer ${jwtToken}`
+	            },
+	            body: JSON.stringify(taskData)
+	        });
+	        
+	        if (response.ok) {
+	            showToast('Task updated successfully!', 'success');
+	            hideEditTaskModal();
+	            loadTasks();
+	            loadMyTasks();
+	            loadDashboard();
+	        } else {
+	            showToast('Failed to update task', 'error');
+	        }
+	    } catch (error) {
+	        showToast('Error: ' + error.message, 'error');
+	    }
+	}
+	
+	
+	// ========== FILE TRANSFER FUNCTIONS ==========
+
+	async function loadFiles() {
+	    try {
+	        const response = await fetch('/api/files', {
+	            headers: { 'Authorization': `Bearer ${jwtToken}` }
+	        });
+	        const files = await response.json();
+	        
+	        const container = document.getElementById('fileList');
+	        if (files.length === 0) {
+	            container.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500">No files uploaded yet</td></tr>';
+	            return;
+	        }
+	        
+	        container.innerHTML = files.map(file => `
+	            <tr class="border-b hover:bg-gray-50">
+	                <td class="px-6 py-3">
+	                    <div class="flex items-center gap-2">
+	                        <i class="fas ${getFileIcon(file.fileType)} text-gray-400"></i>
+	                        <span class="font-medium">${escapeHtml(file.fileName)}</span>
+	                    </div>
+	                    ${file.description ? `<p class="text-xs text-gray-500 mt-1">${escapeHtml(file.description)}</p>` : ''}
+	                </td>
+	                <td class="px-6 py-3 text-sm">${file.fileSize}</td>
+	                <td class="px-6 py-3 text-sm">${file.fileType?.split('/')[1] || 'Unknown'}</td>
+	                <td class="px-6 py-3 text-sm">${escapeHtml(file.uploadedBy)}</td>
+	                <td class="px-6 py-3 text-sm">${new Date(file.createdAt).toLocaleString()}</td>
+	                <td class="px-6 py-3 text-sm">${file.downloadCount}</td>
+	                <td class="px-6 py-3">
+	                    <button onclick="downloadFileFromCenter(${file.id}, '${escapeHtml(file.fileName)}')" class="text-blue-600 hover:text-blue-800 mr-3">
+	                        <i class="fas fa-download"></i>
+	                    </button>
+	                    <button onclick="deleteFileFromCenter(${file.id})" class="text-red-600 hover:text-red-800">
+	                        <i class="fas fa-trash"></i>
+	                    </button>
+	                </td>
+	            </tr>
+	        `).join('');
+	    } catch (error) {
+	        console.error('Error loading files:', error);
+	    }
+	}
+
+	function getFileIcon(fileType) {
+	    if (!fileType) return 'fa-file';
+	    if (fileType.includes('pdf')) return 'fa-file-pdf';
+	    if (fileType.includes('image')) return 'fa-file-image';
+	    if (fileType.includes('word') || fileType.includes('document')) return 'fa-file-word';
+	    if (fileType.includes('excel') || fileType.includes('sheet')) return 'fa-file-excel';
+	    if (fileType.includes('zip') || fileType.includes('rar')) return 'fa-file-archive';
+	    return 'fa-file';
+	}
+
+	function showUploadFileModal() {
+	    document.getElementById('uploadFileModal').classList.remove('hidden');
+	    document.getElementById('uploadFileModal').style.display = 'flex';
+	}
+
+	function hideUploadFileModal() {
+	    document.getElementById('uploadFileModal').classList.add('hidden');
+	    document.getElementById('uploadFileModal').style.display = 'none';
+	    document.getElementById('uploadFileForm').reset();
+	}
+
+	document.getElementById('uploadFileForm').addEventListener('submit', async (e) => {
+	    e.preventDefault();
+	    
+	    const file = document.getElementById('uploadFile').files[0];
+	    const description = document.getElementById('fileDescription').value;
+	    
+	    if (!file) {
+	        showToast('Please select a file', 'error');
+	        return;
+	    }
+	    
+	    const formData = new FormData();
+	    formData.append('file', file);
+	    if (description) formData.append('description', description);
+	    
+	    try {
+	        const response = await fetch('/api/files/upload', {
+	            method: 'POST',
+	            headers: { 'Authorization': `Bearer ${jwtToken}` },
+	            body: formData
+	        });
+	        
+	        if (response.ok) {
+	            showToast('File uploaded successfully!', 'success');
+	            hideUploadFileModal();
+	            loadFiles();
+	        } else {
+	            const error = await response.json();
+	            showToast(error.message || 'Upload failed', 'error');
+	        }
+	    } catch (error) {
+	        showToast('Error uploading file', 'error');
+	    }
+	});
+
+	async function downloadFileFromCenter(fileId, fileName) {
+	    try {
+	        window.open(`/api/files/download/${fileId}`, '_blank');
+	        showToast('Download started', 'success');
+	        loadFiles(); // Refresh to update download count
+	    } catch (error) {
+	        showToast('Error downloading file', 'error');
+	    }
+	}
+
+	async function deleteFileFromCenter(fileId) {
+	    if (!confirm('Are you sure you want to delete this file?')) return;
+	    
+	    try {
+	        const response = await fetch(`/api/files/${fileId}`, {
+	            method: 'DELETE',
+	            headers: { 'Authorization': `Bearer ${jwtToken}` }
+	        });
+	        
+	        if (response.ok) {
+	            showToast('File deleted successfully', 'success');
+	            loadFiles();
+	        } else {
+	            showToast('Failed to delete file', 'error');
+	        }
+	    } catch (error) {
+	        showToast('Error deleting file', 'error');
+	    }
+	}
+	
+	// Separate login function
+	async function handleLogin() {
+	    const email = document.getElementById('loginEmail').value;
+	    const password = document.getElementById('loginPassword').value;
+	    
+	    console.log('Login clicked for:', email);
+	    showToast('Logging in...', 'info');
+	    
+	    try {
+	        const response = await fetch('/api/auth/login', {
+	            method: 'POST',
+	            headers: { 'Content-Type': 'application/json' },
+	            body: JSON.stringify({ email, password })
+	        });
+	        
+	        if (response.ok) {
+	            const data = await response.json();
+	            jwtToken = data.token;
+	            currentUser = data;
+	            localStorage.setItem('token', jwtToken);
+	            localStorage.setItem('user', JSON.stringify(data));
+	            showDashboard();
+	            showToast('Login successful!', 'success');
+	        } else {
+	            const error = await response.json();
+	            showToast('Login failed: ' + (error.message || 'Invalid credentials'), 'error');
+	        }
+	    } catch (error) {
+	        console.error('Login error:', error);
+	        showToast('Error: ' + error.message, 'error');
+	    }
+	}
+	function processMessageQueue() {
+	    if (currentChatUser && privateMessageQueue.length > 0) {
+	        const pendingMessages = privateMessageQueue.filter(msg => msg.senderId === currentChatUser.id);
+	        pendingMessages.forEach(msg => {
+	            appendPrivateMessage(msg);
+	            const index = privateMessageQueue.indexOf(msg);
+	            if (index > -1) privateMessageQueue.splice(index, 1);
+	        });
+	        const userElement = document.querySelector(`.user-item[data-user-id='${currentChatUser.id}']`);
+	        if (userElement) {
+	            const badge = userElement.querySelector('.unread-badge');
+	            if (badge) badge.remove();
+	        }
+	    }
+	}
+
+	function testLogin() {
+	    const email = document.getElementById('loginEmail').value;
+	    const password = document.getElementById('loginPassword').value;
+	    
+	    console.log('Login attempt for:', email);
+	    showToast('Logging in...', 'info');
+	    
+	    fetch('/api/auth/login', {
+	        method: 'POST',
+	        headers: { 'Content-Type': 'application/json' },
+	        body: JSON.stringify({ email, password })
+	    })
+	    .then(response => response.json())
+	    .then(data => {
+	        if (data.token) {
+	            jwtToken = data.token;
+	            currentUser = data;
+	            localStorage.setItem('token', jwtToken);
+	            localStorage.setItem('user', JSON.stringify(data));
+	            showDashboard();
+	            showToast('Login successful!', 'success');
+	        } else {
+	            showToast('Login failed: ' + (data.message || 'Invalid credentials'), 'error');
+	        }
+	    })
+	    .catch(error => {
+	        console.error('Login error:', error);
+	        showToast('Error: ' + error.message, 'error');
+	    });
+	}
+	
+    // Enter key handlers
+    document.getElementById('groupMessageInput')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendGroupMessage(); });
+    document.getElementById('privateMessageInput')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendPrivateMessage(); });
+</script>
+</body>
+</html>

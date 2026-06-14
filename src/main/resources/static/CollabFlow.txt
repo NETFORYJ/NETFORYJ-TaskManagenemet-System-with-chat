@@ -1,0 +1,382 @@
+CollabFlow - Complete Project Documentation
+Project Overview
+CollabFlow is a real-time task management system with integrated chat (group + individual). Multiple teams can collaborate, assign tasks, and communicate in real-time.
+
+
+System Architecture Flow Chart
+
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           COLLABFLOW - SYSTEM ARCHITECTURE                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                                    ┌─────────────────┐
+                                    │    USER BROWSER  │
+                                    │  (HTML/JS/CSS)   │
+                                    └────────┬────────┘
+                                             │
+                    ┌────────────────────────┼────────────────────────┐
+                    │                        │                        │
+                    │  REST APIs (HTTP)       │  WebSocket (STOMP)     │
+                    │  /api/*                 │  /ws/endpoint          │
+                    │                        │                        │
+                    ▼                        ▼                        ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SPRING BOOT BACKEND                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │
+│  │ CONTROLLERS │  │  SERVICES   │  │ WEBSOCKET   │  │  SECURITY   │       │
+│  │   (REST)    │  │ (BUSINESS)  │  │  HANDLERS   │  │   (JWT)     │       │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘       │
+│         │                │                │                │               │
+│         └────────────────┼────────────────┼────────────────┘               │
+│                          │                │                                 │
+│                    ┌─────▼─────┐      ┌───▼────┐                           │
+│                    │   JPA     │      │ STOMP  │                           │
+│                    │ REPOSITORY│      │ BROKER │                           │
+│                    └─────┬─────┘      └───┬────┘                           │
+└──────────────────────────┼────────────────┼────────────────────────────────┘
+                           │                │
+                    ┌──────▼──────┐    ┌────▼────┐
+                    │    MySQL    │    │ In-Memory│
+                    │  Database   │    │ Message  │
+                    │             │    │  Broker  │
+                    └─────────────┘    └─────────┘
+					
+					
+
+
+
+Authentication Flow Chart
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         AUTHENTICATION FLOW (JWT)                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    USER                    FRONTEND                  BACKEND                DATABASE
+      │                         │                         │                      │
+      │  1. Enter Email+PW       │                         │                      │
+      ├────────────────────────►│                         │                      │
+      │                         │  2. POST /api/auth/login │                      │
+      │                         ├────────────────────────►│                      │
+      │                         │                         │  3. Find User        │
+      │                         │                         ├─────────────────────►│
+      │                         │                         │                      │
+      │                         │                         │  4. User Found       │
+      │                         │                         │◄─────────────────────┤
+      │                         │                         │                      │
+      │                         │  5. Generate JWT Token   │                      │
+      │                         │◄────────────────────────┤                      │
+      │  6. Store JWT           │                         │                      │
+      │◄────────────────────────┤                         │                      │
+      │  (LocalStorage/Cookie)  │                         │                      │
+      │                         │                         │                      │
+      │  7. API Call + JWT       │                         │                      │
+      ├────────────────────────►│  8. Request + JWT        │                      │
+      │                         ├────────────────────────►│                      │
+      │                         │                         │  9. Validate JWT     │
+      │                         │                         │  (No DB Call)        │
+      │                         │                         │                      │
+      │  10. Response           │  11. Response           │                      │
+      │◄────────────────────────┤◄────────────────────────┤                      │
+      │                         │                         │                      │
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      AUTHENTICATION FLOW (GOOGLE OAuth2)                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    USER                FRONTEND              BACKEND              GOOGLE
+      │                     │                     │                   │
+      │ 1. Click "Login"     │                     │                   │
+      │   with Google        │                     │                   │
+      ├────────────────────►│                     │                   │
+      │                     │ 2. Redirect to       │                   │
+      │                     │   Google Auth URL    │                   │
+      │                     ├─────────────────────►│                   │
+      │                     │                     │ 3. Auth Request    │
+      │                     │                     ├──────────────────►│
+      │                     │                     │                   │
+      │                     │                     │ 4. Google Login    │
+      │                     │                     │    Permission Page │
+      │                     │                     │◄──────────────────┤
+      │ 5. Google Login     │                     │                   │
+      │    Page Displayed   │                     │                   │
+      │◄────────────────────┼─────────────────────┤                   │
+      │                     │                     │                   │
+      │ 6. Enter Credentials │                     │                   │
+      │   + Allow Access    │                     │                   │
+      ├────────────────────►│                     │                   │
+      │                     │                     │ 7. Auth Code       │
+      │                     │                     ├──────────────────►│
+      │                     │                     │                   │
+      │                     │                     │ 8. Exchange Code   │
+      │                     │                     │    for User Info   │
+      │                     │                     ├──────────────────►│
+      │                     │                     │                   │
+      │                     │                     │ 9. User Email/Name │
+      │                     │                     │◄──────────────────┤
+      │                     │                     │                   │
+      │                     │                     │ 10. Create/Find    │
+      │                     │                     │     User + JWT     │
+      │                     │                     │                   │
+      │ 11. Redirect with   │                     │                   │
+      │     JWT Token       │                     │                   │
+      │◄────────────────────┼─────────────────────┤                   │
+      │                     │                     │                   │
+	  
+	  
+
+
+Real-time WebSocket Flow Chart
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    REAL-TIME TASK & CHAT FLOW (WebSocket)                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    USER A (Task Owner)           WebSocket Server           USER B (Team Member)
+      │                                │                              │
+      │  1. Assign Task to User B      │                              │
+      ├───────────────────────────────►│                              │
+      │                                │                              │
+      │                                │  2. Broadcast to User B      │
+      │                                │     "Task assigned to you"   │
+      │                                ├─────────────────────────────►│
+      │                                │                              │
+      │                                │  3. User B sees task         │
+      │                                │     in real-time             │
+      │                                │                              │
+      │                                │  4. User B clicks "Take Task"│
+      │                                │◄─────────────────────────────┤
+      │                                │                              │
+      │                                │  5. Broadcast to ALL users   │
+      │                                │     "Task X taken by User B" │
+      │                                ├─────────────────────────────►│
+      │                                │                              │
+      │  6. User A sees task status    │                              │
+      │     updated instantly          │                              │
+      │◄───────────────────────────────┤                              │
+      │                                │                              │
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            CHAT MESSAGE FLOW                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    USER A                     WebSocket Broker                    USER B
+      │                              │                                 │
+      │  1. Send /app/chat.send      │                                 │
+      │     {to: "userB", msg}       │                                 │
+      ├─────────────────────────────►│                                 │
+      │                              │                                 │
+      │                              │  2. Route to /topic/userB       │
+      │                              │     (Private Queue)             │
+      │                              ├────────────────────────────────►│
+      │                              │                                 │
+      │  3. Delivery Receipt         │  4. User B receives message     │
+      │◄─────────────────────────────┤     in real-time                │
+      │                              │                                 │
+      │  5. User B typing...         │                                 │
+      │                              │◄────────────────────────────────┤
+      │                              │                                 │
+      │  6. Broadcast "typing"       │                                 │
+      │     indicator to User A      │                                 │
+      │◄─────────────────────────────┤                                 │
+      │                              │                                 │
+	  
+	  ┌─────────────────────────────────────────────────────────────────────────────┐
+│                         COLLABFLOW - DATABASE SCHEMA                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    ┌─────────────┐        ┌─────────────┐        ┌─────────────┐
+    │   tenants   │        │   users     │        │login_history│
+    ├─────────────┤        ├─────────────┤        ├─────────────┤
+    │id (PK)      │◄───────│tenant_id(FK)│        │id (PK)      │
+    │name         │        │id (PK)      │───────►│user_id(FK)  │
+    │subdomain    │        │email        │        │login_time   │
+    │created_at   │        │password     │        │logout_time  │
+    └─────────────┘        │full_name    │        │ip_address   │
+                           │role         │        │user_agent   │
+                           │google_id    │        └─────────────┘
+                           └──────┬──────┘
+                                  │
+            ┌─────────────────────┼─────────────────────┐
+            │                     │                     │
+            ▼                     ▼                     ▼
+    ┌─────────────┐        ┌─────────────┐        ┌─────────────┐
+    │ employees   │        │audit_log    │        │notifications│
+    ├─────────────┤        ├─────────────┤        ├─────────────┤
+    │id (PK)      │        │id (PK)      │        │id (PK)      │
+    │tenant_id(FK)│        │user_id(FK)  │        │user_id(FK)  │
+    │user_id(FK)  │        │tenant_id(FK)│        │title        │
+    │employee_code│        │action       │        │message      │
+    │first_name   │        │entity_type  │        │is_read      │
+    │last_name    │        │entity_id    │        │created_at   │
+    │department   │        │old_value    │        └─────────────┘
+    │designation  │        │new_value    │
+    │joining_date │        │timestamp    │
+    │salary       │        └─────────────┘
+    │status       │
+    └──────┬──────┘
+           │
+    ┌──────┴──────┬──────────────┬──────────────┐
+    ▼             ▼              ▼              ▼
+┌─────────┐  ┌─────────┐    ┌─────────┐    ┌─────────┐
+│tasks    │  │attendance│    │  chats  │    │payroll  │
+├─────────┤  ├─────────┤    ├─────────┤    ├─────────┤
+│id (PK)  │  │id (PK)  │    │id (PK)  │    │id (PK)  │
+│tenant_id│  │emp_id(FK)│   │tenant_id│    │emp_id(FK)│
+│assignee │  │date     │    │sender_id│    │month_year│
+│assigner │  │check_in │    │receiver │    │net_salary│
+│title    │  │check_out│    │message  │    │status    │
+│status   │  │status   │    │sent_at  │    └─────────┘
+│priority │  └─────────┘    └─────────┘
+│due_date │
+└─────────┘
+
+
+Project Structure (Maven)
+
+
+CollabFlow/
+├── pom.xml
+├── src/
+│   ├── main/
+│   │   ├── java/com/collabflow/
+│   │   │   ├── CollabFlowApplication.java
+│   │   │   ├── config/
+│   │   │   │   ├── SecurityConfig.java
+│   │   │   │   ├── WebSocketConfig.java
+│   │   │   │   ├── JwtAuthFilter.java
+│   │   │   │   └── CorsConfig.java
+│   │   │   ├── controller/
+│   │   │   │   ├── AuthController.java
+│   │   │   │   ├── TaskController.java
+│   │   │   │   ├── EmployeeController.java
+│   │   │   │   └── DashboardController.java
+│   │   │   ├── service/
+│   │   │   │   ├── AuthService.java
+│   │   │   │   ├── TaskService.java
+│   │   │   │   ├── ChatService.java
+│   │   │   │   ├── AuditService.java
+│   │   │   │   └── CustomUserDetailsService.java
+│   │   │   ├── repository/
+│   │   │   │   ├── UserRepository.java
+│   │   │   │   ├── TaskRepository.java
+│   │   │   │   ├── ChatRepository.java
+│   │   │   │   └── AuditLogRepository.java
+│   │   │   ├── entity/
+│   │   │   │   ├── User.java
+│   │   │   │   ├── Task.java
+│   │   │   │   ├── ChatMessage.java
+│   │   │   │   ├── Tenant.java
+│   │   │   │   └── AuditLog.java
+│   │   │   ├── dto/
+│   │   │   │   ├── LoginRequest.java
+│   │   │   │   ├── JwtResponse.java
+│   │   │   │   ├── TaskDto.java
+│   │   │   │   └── ChatMessageDto.java
+│   │   │   ├── websocket/
+│   │   │   │   ├── ChatWebSocketHandler.java
+│   │   │   │   └── TaskWebSocketHandler.java
+│   │   │   └── utils/
+│   │   │       └── JwtUtil.java
+│   │   └── resources/
+│   │       ├── application.properties
+│   │       ├── static/
+│   │       │   ├── css/
+│   │       │   ├── js/
+│   │       │   └── index.html
+│   │       └── templates/
+│   └── test/
+
+
+
+API Endpoints Documentation
+Method	Endpoint	Description	Auth Required
+Authentication			
+POST	/api/auth/login	Login with email/password	No
+POST	/api/auth/google	Google OAuth2 login	No
+POST	/api/auth/logout	Logout user	Yes
+GET	/api/auth/me	Get current user	Yes
+Tasks			
+GET	/api/tasks	Get all tasks (workspace)	Yes
+POST	/api/tasks	Create new task	Yes
+PUT	/api/tasks/{id}/assign	Assign task to user	Yes
+PUT	/api/tasks/{id}/take	Take a task (real-time)	Yes
+PUT	/api/tasks/{id}/status	Update task status	Yes
+Chat			
+GET	/api/chats/group	Get group chat history	Yes
+GET	/api/chats/user/{userId}	Get individual chat history	Yes
+Dashboard			
+GET	/api/dashboard/stats	Get dashboard metrics	Yes
+GET	/api/audit/logs	Get login/action history	Yes
+
+
+WebSocket STOMP Endpoints
+Destination	Type	Description
+/app/chat.send	Send	Send chat message
+/app/task.take	Send	Take a task
+/app/task.update	Send	Update task
+/topic/tasks	Subscribe	Live task updates
+/topic/chat/{workspaceId}	Subscribe	Group chat
+/queue/user/{userId}	Subscribe	Private messages
+/topic/typing	Subscribe	Typing indicators
+
+
+Technology Stack Summary
+Layer	Technology	Version
+Framework	Spring Boot	3.2.x
+Security	Spring Security + JWT	6.x
+Real-time	WebSocket + STOMP	Built-in
+Database	MySQL	8.0+
+ORM	Spring Data JPA	Built-in
+Frontend	HTML5 + Tailwind CSS	-
+Build Tool	Maven	3.8+
+Java	OpenJDK	17 or 21
+
+
+1. MySQL Database
+sql
+CREATE DATABASE collabflow_db;
+2. Google OAuth Credentials (Optional - can add later)
+Go to Google Cloud Console
+
+Create project → Enable Google+ API
+
+Create OAuth 2.0 credentials
+
+Copy Client ID and Secret
+
+
+3. Application Properties (to be configured)
+properties
+# Database
+spring.datasource.url=jdbc:mysql://localhost:3306/collabflow_db
+spring.datasource.username=root
+spring.datasource.password=your_password
+
+# JWT
+jwt.secret=your-256-bit-secret-key
+jwt.expiration=86400000
+
+# Google OAuth (optional - can add after project runs)
+spring.security.oauth2.client.registration.google.client-id=your_client_id
+spring.security.oauth2.client.registration.google.client-secret=your_client_secret
+
+
+Final Checklist Before Code Generation
+Have you confirmed:
+
+✅ Project Name: CollabFlow
+
+✅ Authentication: JWT + Google OAuth2 (JUST TWO)
+
+✅ Real-time: WebSocket (STOMP)
+
+✅ Frontend: HTML/JS + Tailwind CSS
+
+✅ Database: MySQL Workbench

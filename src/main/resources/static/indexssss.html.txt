@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CollabFlow - Task Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .toast-success { background: #10b981; }
+        .toast-error { background: #ef4444; }
+        .toast-info { background: #3b82f6; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .status-AVAILABLE { background: #d1fae5; color: #065f46; }
+        .status-IN_PROGRESS { background: #fed7aa; color: #92400e; }
+        .status-COMPLETED { background: #dbeafe; color: #1e40af; }
+        .task-card { transition: all 0.2s ease; border: 1px solid #e5e7eb; border-radius: 12px; }
+        .task-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
+        .modal { backdrop-filter: blur(4px); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-loading { opacity: 0.7; pointer-events: none; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+<!-- Login Container -->
+<div id="loginContainer" class="min-h-screen flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-xl p-8 w-full max-w-md">
+        <div class="text-center mb-8">
+            <i class="fas fa-tasks text-5xl text-purple-600 mb-3"></i>
+            <h1 class="text-3xl font-bold text-gray-800">CollabFlow</h1>
+            <p class="text-gray-500 mt-2">Task Management & Collaboration</p>
+        </div>
+        <form id="loginForm" onsubmit="event.preventDefault(); handleLogin();">
+            <input type="email" id="loginEmail" placeholder="Email" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <input type="password" id="loginPassword" placeholder="Password" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <button type="submit" class="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700">Login</button>
+        </form>
+        <div class="text-center mt-3"><a href="#" id="showRegister" class="text-purple-600">Register</a></div>
+    </div>
+</div>
+
+<!-- Register Container -->
+<div id="registerContainer" class="min-h-screen flex items-center justify-center hidden">
+    <div class="bg-white rounded-xl shadow-xl p-8 w-full max-w-md">
+        <h1 class="text-2xl font-bold mb-4">Register</h1>
+        <form id="registerForm">
+            <input type="text" id="regFullName" placeholder="Full Name" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <input type="email" id="regEmail" placeholder="Email" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <input type="password" id="regPassword" placeholder="Password" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <input type="text" id="regTenantName" placeholder="Workspace Name" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <input type="text" id="regSubdomain" placeholder="Subdomain" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <button type="submit" class="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700">Register</button>
+        </form>
+        <div class="text-center mt-3"><a href="#" id="showLogin" class="text-purple-600">Back to Login</a></div>
+    </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboardContainer" class="hidden">
+    <!-- Sidebar -->
+    <div class="fixed left-0 top-0 h-full w-64 bg-gray-900 text-white shadow-xl">
+        <div class="p-6 border-b border-gray-700">
+            <h2 class="text-xl font-bold">CollabFlow</h2>
+            <p class="text-xs text-gray-400 mt-1" id="workspaceName"></p>
+        </div>
+        <nav class="mt-6">
+            <div onclick="showSection('dashboard')" class="nav-item py-3 px-6 cursor-pointer hover:bg-gray-800">📊 Dashboard</div>
+            <div onclick="showSection('tasks')" class="nav-item py-3 px-6 cursor-pointer hover:bg-gray-800">📋 All Tasks</div>
+            <div onclick="showSection('myTasks')" class="nav-item py-3 px-6 cursor-pointer hover:bg-gray-800">✅ My Tasks</div>
+        </nav>
+        <div class="absolute bottom-0 w-full p-6 border-t border-gray-700">
+            <p class="text-sm" id="userName"></p>
+            <button onclick="logout()" class="mt-2 w-full bg-red-600 py-2 rounded hover:bg-red-700">Logout</button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="ml-64 p-8">
+        <!-- Dashboard -->
+        <div id="dashboardSection" class="section">
+            <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+            <div class="grid grid-cols-4 gap-6 mb-8">
+                <div class="bg-white p-6 rounded-xl shadow"><p class="text-gray-500">Total Tasks</p><p id="totalTasks" class="text-3xl font-bold">0</p></div>
+                <div class="bg-white p-6 rounded-xl shadow"><p class="text-gray-500">Available</p><p id="availableTasks" class="text-3xl font-bold">0</p></div>
+                <div class="bg-white p-6 rounded-xl shadow"><p class="text-gray-500">In Progress</p><p id="inProgressTasks" class="text-3xl font-bold">0</p></div>
+                <div class="bg-white p-6 rounded-xl shadow"><p class="text-gray-500">Completed</p><p id="completedTasks" class="text-3xl font-bold">0</p></div>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow"><canvas id="taskChart" height="200"></canvas></div>
+        </div>
+        
+        <!-- All Tasks -->
+        <div id="tasksSection" class="section hidden">
+            <div class="flex justify-between mb-6">
+                <h2 class="text-2xl font-bold">All Tasks</h2>
+                <button onclick="showCreateTaskModal()" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">+ Create Task</button>
+            </div>
+            <div id="tasksList" class="grid grid-cols-3 gap-6"></div>
+        </div>
+        
+        <!-- My Tasks -->
+        <div id="myTasksSection" class="section hidden">
+            <h2 class="text-2xl font-bold mb-6">My Tasks</h2>
+            <div id="myTasksList" class="grid grid-cols-3 gap-6"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Task Modal -->
+<div id="createTaskModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-96">
+        <h3 class="text-xl font-bold mb-4">Create Task</h3>
+        <input type="text" id="taskTitle" placeholder="Title" class="w-full border rounded-lg p-2 mb-3">
+        <textarea id="taskDescription" placeholder="Description" rows="3" class="w-full border rounded-lg p-2 mb-3"></textarea>
+        <select id="taskPriority" class="w-full border rounded-lg p-2 mb-3">
+            <option value="LOW">Low</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="HIGH">High</option>
+        </select>
+        <button onclick="createTask()" class="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700">Create</button>
+        <button onclick="hideCreateTaskModal()" class="w-full mt-2 bg-gray-300 py-2 rounded-lg">Cancel</button>
+    </div>
+</div>
+
+<!-- Complete Task Modal -->
+<div id="completeTaskModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-96">
+        <h3 class="text-xl font-bold mb-4">Complete Task</h3>
+        <input type="hidden" id="completeTaskId">
+        <textarea id="completionDescription" rows="4" placeholder="What did you accomplish?" required class="w-full border rounded-lg p-2 mb-3"></textarea>
+        <button id="completeTaskBtn" onclick="submitCompleteTask()" class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">Complete</button>
+        <button onclick="hideCompleteTaskModal()" class="w-full mt-2 bg-gray-300 py-2 rounded-lg">Cancel</button>
+    </div>
+</div>
+
+<script>
+    let currentUser = null;
+    let jwtToken = null;
+    let taskChart = null;
+
+    function showToast(message, type) {
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerText = message;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+
+    // ========== LOGIN / REGISTER ==========
+    
+    async function handleLogin() {
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        
+        showToast('Logging in...', 'info');
+        
+        try {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                jwtToken = data.token;
+                currentUser = data;
+                localStorage.setItem('token', jwtToken);
+                localStorage.setItem('user', JSON.stringify(data));
+                showDashboard();
+                showToast('Login successful!', 'success');
+            } else {
+                showToast('Login failed!', 'error');
+            }
+        } catch (error) {
+            showToast('Error: ' + error.message, 'error');
+        }
+    }
+    
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                fullName: document.getElementById('regFullName').value,
+                email: document.getElementById('regEmail').value,
+                password: document.getElementById('regPassword').value,
+                tenantName: document.getElementById('regTenantName').value,
+                subdomain: document.getElementById('regSubdomain').value
+            })
+        });
+        if (response.ok) {
+            showToast('Registration successful! Please login.', 'success');
+            document.getElementById('registerContainer').classList.add('hidden');
+            document.getElementById('loginContainer').classList.remove('hidden');
+        } else {
+            showToast('Registration failed!', 'error');
+        }
+    });
+    
+    document.getElementById('showRegister').onclick = () => {
+        document.getElementById('loginContainer').classList.add('hidden');
+        document.getElementById('registerContainer').classList.remove('hidden');
+    };
+    document.getElementById('showLogin').onclick = () => {
+        document.getElementById('registerContainer').classList.add('hidden');
+        document.getElementById('loginContainer').classList.remove('hidden');
+    };
+    
+    function showDashboard() {
+        document.getElementById('loginContainer').classList.add('hidden');
+        document.getElementById('registerContainer').classList.add('hidden');
+        document.getElementById('dashboardContainer').classList.remove('hidden');
+        document.getElementById('userName').innerText = currentUser.fullName;
+        document.getElementById('workspaceName').innerHTML = currentUser.tenantName || 'Workspace';
+        loadDashboard();
+        loadTasks();
+        loadMyTasks();
+    }
+    
+    function logout() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        location.reload();
+    }
+    
+    // Check existing session
+    const savedToken = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
+    if (savedToken && savedUser) {
+        jwtToken = savedToken;
+        currentUser = JSON.parse(savedUser);
+        showDashboard();
+    }
+    
+    // ========== DASHBOARD ==========
+    
+    async function loadDashboard() {
+        try {
+            const response = await fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+            const tasks = await response.json();
+            const total = tasks.length;
+            const available = tasks.filter(t => t.status === 'AVAILABLE').length;
+            const inProgress = tasks.filter(t => t.status === 'IN_PROGRESS').length;
+            const completed = tasks.filter(t => t.status === 'COMPLETED').length;
+            
+            document.getElementById('totalTasks').innerText = total;
+            document.getElementById('availableTasks').innerText = available;
+            document.getElementById('inProgressTasks').innerText = inProgress;
+            document.getElementById('completedTasks').innerText = completed;
+            
+            if (taskChart) taskChart.destroy();
+            const ctx = document.getElementById('taskChart').getContext('2d');
+            taskChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Available', 'In Progress', 'Completed'],
+                    datasets: [{ data: [available, inProgress, completed], backgroundColor: ['#10b981', '#f59e0b', '#3b82f6'] }]
+                }
+            });
+        } catch (error) {
+            showToast('Error loading dashboard', 'error');
+        }
+    }
+    
+    // ========== TASKS ==========
+    
+    async function loadTasks() {
+        try {
+            const response = await fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+            const tasks = await response.json();
+            const container = document.getElementById('tasksList');
+            
+            if (tasks.length === 0) {
+                container.innerHTML = '<p class="col-span-full text-center text-gray-500">No tasks available</p>';
+                return;
+            }
+            
+            container.innerHTML = tasks.map(task => `
+                <div class="task-card bg-white p-5">
+                    <div class="flex justify-between items-start mb-3">
+                        <h3 class="font-bold">${escapeHtml(task.title)}</h3>
+                        <span class="status-badge status-${task.status}">${task.status}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-3">${escapeHtml(task.description?.substring(0, 100) || 'No description')}</p>
+                    <div class="text-xs text-gray-500 mb-3">
+                        <i class="fas fa-user mr-1"></i>Created by: ${escapeHtml(task.createdByName)}
+                    </div>
+                    ${task.status === 'AVAILABLE' ? 
+                        `<button onclick="takeTask(${task.id}, this)" class="w-full bg-green-500 text-white py-2 rounded-lg text-sm hover:bg-green-600">Take Task</button>` : 
+                        task.status === 'IN_PROGRESS' && task.assignedTo === currentUser.id ?
+                        `<button onclick="showCompleteModal(${task.id})" class="w-full bg-blue-500 text-white py-2 rounded-lg text-sm hover:bg-blue-600">Complete Task</button>` :
+                        task.status === 'COMPLETED' ?
+                        `<button onclick="viewTaskDetails(${task.id})" class="w-full bg-gray-500 text-white py-2 rounded-lg text-sm hover:bg-gray-600">View Details</button>` : ''
+                    }
+                </div>
+            `).join('');
+        } catch (error) {
+            showToast('Error loading tasks', 'error');
+        }
+    }
+    
+    async function loadMyTasks() {
+        try {
+            const response = await fetch('/api/tasks/my-tasks', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+            const tasks = await response.json();
+            const container = document.getElementById('myTasksList');
+            
+            if (tasks.length === 0) {
+                container.innerHTML = '<p class="col-span-full text-center text-gray-500">No tasks assigned</p>';
+                return;
+            }
+            
+            container.innerHTML = tasks.map(task => `
+                <div class="task-card bg-white p-5">
+                    <div class="flex justify-between items-start mb-3">
+                        <h3 class="font-bold">${escapeHtml(task.title)}</h3>
+                        <span class="status-badge status-${task.status}">${task.status}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-3">${escapeHtml(task.description?.substring(0, 100) || 'No description')}</p>
+                    ${task.status === 'IN_PROGRESS' ?
+                        `<button onclick="showCompleteModal(${task.id})" class="w-full bg-blue-500 text-white py-2 rounded-lg text-sm hover:bg-blue-600">Complete Task</button>` :
+                        task.status === 'COMPLETED' ?
+                        `<button onclick="viewTaskDetails(${task.id})" class="w-full bg-gray-500 text-white py-2 rounded-lg text-sm hover:bg-gray-600">View Details</button>` : ''
+                    }
+                </div>
+            `).join('');
+        } catch (error) {
+            showToast('Error loading my tasks', 'error');
+        }
+    }
+    
+    async function takeTask(taskId, btn) {
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Taking...';
+        btn.disabled = true;
+        
+        try {
+            const response = await fetch(`/api/tasks/${taskId}/take`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${jwtToken}` }
+            });
+            
+            if (response.ok) {
+                showToast('Task taken successfully!', 'success');
+                loadTasks();
+                loadMyTasks();
+                loadDashboard();
+            } else {
+                showToast('Failed to take task', 'error');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        } catch (error) {
+            showToast('Error: ' + error.message, 'error');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+    
+    // ========== COMPLETE TASK ==========
+    
+    let currentTaskId = null;
+    
+    function showCompleteModal(taskId) {
+        currentTaskId = taskId;
+        document.getElementById('completeTaskModal').classList.remove('hidden');
+        document.getElementById('completeTaskModal').style.display = 'flex';
+        document.getElementById('completionDescription').value = '';
+    }
+    
+    function hideCompleteTaskModal() {
+        document.getElementById('completeTaskModal').classList.add('hidden');
+        document.getElementById('completeTaskModal').style.display = 'none';
+        currentTaskId = null;
+    }
+    
+    async function submitCompleteTask() {
+        const description = document.getElementById('completionDescription').value;
+        if (!description) {
+            showToast('Please enter completion description', 'error');
+            return;
+        }
+        
+        const btn = document.getElementById('completeTaskBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Completing...';
+        btn.disabled = true;
+        
+        try {
+            const response = await fetch(`/api/tasks/${currentTaskId}/complete?completionDescription=${encodeURIComponent(description)}`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${jwtToken}` }
+            });
+            
+            if (response.ok) {
+                showToast('Task completed successfully!', 'success');
+                hideCompleteTaskModal();
+                loadTasks();
+                loadMyTasks();
+                loadDashboard();
+            } else {
+                showToast('Failed to complete task', 'error');
+            }
+        } catch (error) {
+            showToast('Error: ' + error.message, 'error');
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+    
+    // ========== CREATE TASK ==========
+    
+    function showCreateTaskModal() {
+        document.getElementById('createTaskModal').classList.remove('hidden');
+        document.getElementById('createTaskModal').style.display = 'flex';
+    }
+    
+    function hideCreateTaskModal() {
+        document.getElementById('createTaskModal').classList.add('hidden');
+        document.getElementById('createTaskModal').style.display = 'none';
+        document.getElementById('taskTitle').value = '';
+        document.getElementById('taskDescription').value = '';
+    }
+    
+    async function createTask() {
+        const title = document.getElementById('taskTitle').value.trim();
+        if (!title) {
+            showToast('Please enter task title', 'error');
+            return;
+        }
+        
+        const taskData = {
+            title: title,
+            description: document.getElementById('taskDescription').value,
+            priority: document.getElementById('taskPriority').value,
+            dueDate: null
+        };
+        
+        const btn = event.target;
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+        btn.disabled = true;
+        
+        try {
+            const response = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${jwtToken}`
+                },
+                body: JSON.stringify(taskData)
+            });
+            
+            if (response.ok) {
+                showToast('Task created successfully!', 'success');
+                hideCreateTaskModal();
+                loadTasks();
+                loadDashboard();
+            } else {
+                showToast('Failed to create task', 'error');
+            }
+        } catch (error) {
+            showToast('Error: ' + error.message, 'error');
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+    
+    async function viewTaskDetails(taskId) {
+        try {
+            const response = await fetch(`/api/tasks/${taskId}`, {
+                headers: { 'Authorization': `Bearer ${jwtToken}` }
+            });
+            const task = await response.json();
+            
+            let details = `Title: ${task.title}\n`;
+            details += `Description: ${task.description || 'No description'}\n`;
+            details += `Status: ${task.status}\n`;
+            details += `Priority: ${task.priority}\n`;
+            if (task.completionDescription) {
+                details += `\nCompletion Description: ${task.completionDescription}\n`;
+            }
+            if (task.completedAt) {
+                details += `Completed At: ${new Date(task.completedAt).toLocaleString()}\n`;
+            }
+            
+            alert(details);
+        } catch (error) {
+            showToast('Error loading task details', 'error');
+        }
+    }
+    
+    // ========== NAVIGATION ==========
+    
+    function showSection(section) {
+        document.querySelectorAll('.section').forEach(el => el.classList.add('hidden'));
+        document.getElementById(`${section}Section`).classList.remove('hidden');
+        
+        if (section === 'dashboard') loadDashboard();
+        if (section === 'tasks') loadTasks();
+        if (section === 'myTasks') loadMyTasks();
+    }
+    
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+</body>
+</html>

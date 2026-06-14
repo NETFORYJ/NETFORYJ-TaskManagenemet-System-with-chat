@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CollabFlow - Complete Task Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+		
+		/* Progress bar styles */
+		.progress-container {
+		    width: 100%;
+		    background-color: #e5e7eb;
+		    border-radius: 8px;
+		    margin-top: 8px;
+		    display: none;
+		}
+		.progress-bar {
+		    width: 0%;
+		    height: 8px;
+		    background: linear-gradient(135deg, #667eea, #764ba2);
+		    border-radius: 8px;
+		    transition: width 0.3s ease;
+		    position: relative;
+		}
+		.progress-text {
+		    font-size: 12px;
+		    color: #667eea;
+		    margin-top: 4px;
+		    display: inline-block;
+		}
+		
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: white; z-index: 1000; animation: slideIn 0.3s ease; }
+        .toast-success { background: #10b981; }
+        .toast-error { background: #ef4444; }
+        .toast-info { background: #3b82f6; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .status-AVAILABLE { background: #d1fae5; color: #065f46; }
+        .status-IN_PROGRESS { background: #fed7aa; color: #92400e; }
+        .status-COMPLETED { background: #dbeafe; color: #1e40af; }
+        .task-card { transition: all 0.2s ease; border: 1px solid #e5e7eb; border-radius: 12px; background: white; }
+        .task-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
+        .modal { backdrop-filter: blur(4px); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .chat-message { animation: fadeIn 0.3s ease; margin-bottom: 12px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .message-right { text-align: right; }
+        .message-left { text-align: left; }
+        .message-bubble-right { background: linear-gradient(135deg, #7c3aed, #6d28d9); color: white; display: inline-block; padding: 8px 14px; border-radius: 18px; border-bottom-right-radius: 4px; max-width: 70%; }
+        .message-bubble-left { background: #e5e7eb; color: black; display: inline-block; padding: 8px 14px; border-radius: 18px; border-bottom-left-radius: 4px; max-width: 70%; }
+        .online-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block; margin-left: 6px; box-shadow: 0 0 0 2px white; }
+        .offline-dot { width: 8px; height: 8px; background: #9ca3af; border-radius: 50%; display: inline-block; margin-left: 6px; }
+    </style>
+	
+	
+	<thead class="bg-gray-50 border-b">
+	    <tr>
+	        <th class="px-6 py-3 text-left">File Name</th>
+	        <th class="px-6 py-3 text-left">Size</th>
+	        <th class="px-6 py-3 text-left">Uploaded By</th>
+
+	    </tr>
+	</thead>
+	
+</head>
+<body class="bg-gray-100">
+
+<!-- Login Container -->
+<div id="loginContainer" class="min-h-screen flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-xl p-8 w-full max-w-md">
+        <div class="text-center mb-8"><i class="fas fa-tasks text-5xl text-purple-600 mb-3"></i><h1 class="text-3xl font-bold text-gray-800">CollabFlow</h1><p class="text-gray-500 mt-2">Task Management & Collaboration</p></div>
+        <form id="loginForm" onsubmit="event.preventDefault(); handleLogin();">
+            <input type="email" id="loginEmail" placeholder="Email" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <input type="password" id="loginPassword" placeholder="Password" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <button type="submit" class="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700">Login</button>
+			
+			<!-- Divider -->
+			<div class="relative my-4">
+			    <div class="absolute inset-0 flex items-center">
+			        <div class="w-full border-t border-gray-300"></div>
+			    </div>
+			    <div class="relative flex justify-center text-sm">
+			        <span class="px-2 bg-white text-gray-500">Or continue with</span>
+			    </div>
+			</div>
+
+
+			
+			<a href="/oauth2/authorization/google" 
+			   class="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-50 transition">
+			    <img src="https://www.google.com/favicon.ico" class="w-5 h-5" alt="Google">
+			    <span>Sign in with Google</span>
+			</a>
+
+
+			
+			</form>
+        <div class="text-center mt-3"><a href="#" id="showRegister" class="text-purple-600">Register</a></div>
+    </div>
+</div>
+
+
+
+
+
+<!-- Register Container -->
+<div id="registerContainer" class="min-h-screen flex items-center justify-center hidden">
+    <div class="bg-white rounded-xl shadow-xl p-8 w-full max-w-md">
+        <h1 class="text-2xl font-bold mb-4">Register</h1>
+        <form id="registerForm">
+            <input type="text" id="regFullName" placeholder="Full Name" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <input type="email" id="regEmail" placeholder="Email" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <input type="password" id="regPassword" placeholder="Password" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <input type="text" id="regTenantName" placeholder="Workspace Name" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <input type="text" id="regSubdomain" placeholder="Subdomain" required class="w-full px-3 py-2 border rounded-lg mb-3">
+            <button type="submit" class="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700">Register</button>
+        </form>
+        <div class="text-center mt-3"><a href="#" id="showLogin" class="text-purple-600">Back to Login</a></div>
+    </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboardContainer" class="hidden">
+    <!-- Sidebar -->
+    <div class="fixed left-0 top-0 h-full w-64 bg-gray-900 text-white shadow-xl z-10">
+        <div class="p-6 border-b border-gray-700"><h2 class="text-xl font-bold">CollabFlow</h2><p class="text-xs text-gray-400 mt-1" id="workspaceName"></p></div>
+        <nav class="mt-6">
+            <div onclick="showSection('dashboard')" class="nav-item py-3 px-6 cursor-pointer hover:bg-gray-800">📊 Dashboard</div>
+            <div onclick="showSection('tasks')" class="nav-item py-3 px-6 cursor-pointer hover:bg-gray-800">📋 All Tasks</div>
+            <div onclick="showSection('myTasks')" class="nav-item py-3 px-6 cursor-pointer hover:bg-gray-800">✅ My Tasks</div>
+            <div onclick="showSection('groupChat')" class="nav-item py-3 px-6 cursor-pointer hover:bg-gray-800">💬 Group Chat</div>
+            <div onclick="showSection('privateChat')" class="nav-item py-3 px-6 cursor-pointer hover:bg-gray-800">🔒 Private Chat</div>
+            <div onclick="showSection('files')" class="nav-item py-3 px-6 cursor-pointer hover:bg-gray-800">📁 File Transfer</div>
+        </nav>
+        <div class="absolute bottom-0 w-full p-6 border-t border-gray-700">
+            <p class="text-sm" id="userName"></p>
+            <p class="text-xs text-gray-400" id="userRole"></p>
+            <button onclick="logout()" class="mt-2 w-full bg-red-600 py-2 rounded hover:bg-red-700">Logout</button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="ml-64 p-8">
+        <!-- Dashboard -->
+        <div id="dashboardSection" class="section"><h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+            <div class="grid grid-cols-4 gap-6 mb-8">
+                <div class="bg-white p-6 rounded-xl shadow"><p class="text-gray-500">Total Tasks</p><p id="totalTasks" class="text-3xl font-bold">0</p></div>
+                <div class="bg-white p-6 rounded-xl shadow"><p class="text-gray-500">Available</p><p id="availableTasks" class="text-3xl font-bold">0</p></div>
+                <div class="bg-white p-6 rounded-xl shadow"><p class="text-gray-500">In Progress</p><p id="inProgressTasks" class="text-3xl font-bold">0</p></div>
+                <div class="bg-white p-6 rounded-xl shadow"><p class="text-gray-500">Completed</p><p id="completedTasks" class="text-3xl font-bold">0</p></div>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow"><canvas id="taskChart" height="200"></canvas></div>
+        </div>
+        
+        <!-- Tasks -->
+        <div id="tasksSection" class="section hidden"><div class="flex justify-between mb-6"><h2 class="text-2xl font-bold">All Tasks</h2><button onclick="showCreateTaskModal()" class="bg-purple-600 text-white px-4 py-2 rounded-lg">+ Create Task</button></div><div id="tasksList" class="grid grid-cols-3 gap-6"></div></div>
+        <div id="myTasksSection" class="section hidden"><h2 class="text-2xl font-bold mb-6">My Tasks</h2><div id="myTasksList" class="grid grid-cols-3 gap-6"></div></div>
+        
+        <!-- Group Chat -->
+        <div id="groupChatSection" class="section hidden"><div class="bg-white rounded-xl shadow h-[600px] flex flex-col"><div class="p-4 border-b bg-purple-50"><h3 class="font-bold">Group Chat</h3></div><div id="groupChatMessages" class="flex-1 p-4 overflow-y-auto"></div><div class="p-4 border-t flex gap-2"><input type="text" id="groupMessageInput" placeholder="Type message..." class="flex-1 border rounded-lg px-4 py-2"><button onclick="sendGroupMessage()" class="bg-purple-600 text-white px-6 py-2 rounded-lg">Send</button></div></div></div>
+        
+        <!-- Private Chat -->
+        <div id="privateChatSection" class="section hidden"><div class="flex gap-6 h-[600px]"><div class="w-1/3 bg-white rounded-xl shadow overflow-hidden"><div class="p-4 border-b bg-purple-50"><h3 class="font-bold">Users</h3></div><div id="usersList" class="overflow-y-auto h-[540px]"></div></div><div class="w-2/3 bg-white rounded-xl shadow flex flex-col"><div id="privateChatHeader" class="p-4 border-b bg-purple-50"><p class="text-gray-500 text-center">Select a user to start chatting</p></div><div id="privateChatMessages" class="flex-1 p-4 overflow-y-auto"></div><div class="p-4 border-t flex gap-2"><input type="text" id="privateMessageInput" placeholder="Type message..." class="flex-1 border rounded-lg px-4 py-2"><button onclick="sendPrivateMessage()" class="bg-purple-600 text-white px-6 py-2 rounded-lg">Send</button></div></div></div></div>
+        
+        <!-- File Transfer -->
+        <div id="filesSection" class="section hidden"><div class="flex justify-between mb-6"><h2 class="text-2xl font-bold">File Transfer</h2><button onclick="showUploadModal()" class="bg-purple-600 text-white px-4 py-2 rounded-lg">+ Upload</button></div><div class="bg-white rounded-xl shadow overflow-hidden"><table class="w-full"><thead class="bg-gray-50 border-b"><tr><th class="px-6 py-3 text-left">File Name</th><th class="px-6 py-3 text-left">Size</th><th class="px-6 py-3 text-left">Uploaded By</th><th class="px-6 py-3 text-left">Actions</th></tr></thead><tbody id="fileList"><tr><td colspan="4" class="text-center py-8">Loading...</td></tr></tbody></table></div></div>
+    </div>
+</div>
+
+<!-- Modals -->
+<div id="createTaskModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50"><div class="bg-white rounded-xl p-6 w-96"><h3 class="text-xl font-bold mb-4">Create Task</h3><input type="text" id="taskTitle" placeholder="Title" class="w-full border rounded-lg p-2 mb-3"><textarea id="taskDescription" placeholder="Description" rows="3" class="w-full border rounded-lg p-2 mb-3"></textarea><select id="taskPriority" class="w-full border rounded-lg p-2 mb-3"><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option></select><button onclick="createTask()" class="w-full bg-purple-600 text-white py-2 rounded-lg">Create</button><button onclick="hideCreateTaskModal()" class="w-full mt-2 bg-gray-300 py-2 rounded-lg">Cancel</button></div></div>
+
+<div id="completeTaskModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50"><div class="bg-white rounded-xl p-6 w-96"><h3 class="text-xl font-bold mb-4">Complete Task</h3><input type="hidden" id="completeTaskId"><textarea id="completionDescription" rows="3" placeholder="What did you accomplish?" required class="w-full border rounded-lg p-2 mb-3"></textarea><input type="file" id="taskAttachment" accept=".pdf,.doc,.docx,.txt,.png,.jpg" class="w-full border rounded-lg p-2 mb-3"><p class="text-xs text-gray-500 mb-3">Optional: Attach file (Max 10MB)</p><button id="completeBtn" onclick="submitCompleteTask()" class="w-full bg-green-600 text-white py-2 rounded-lg">Complete</button><button onclick="hideCompleteTaskModal()" class="w-full mt-2 bg-gray-300 py-2 rounded-lg">Cancel</button></div></div>
+
+<div id="viewTaskModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50"><div class="bg-white rounded-xl p-6 w-[500px] max-h-[80vh] overflow-y-auto"><h3 class="text-xl font-bold mb-4">Task Details</h3><div id="viewTaskContent"></div><button onclick="hideViewTaskModal()" class="w-full mt-4 bg-gray-300 py-2 rounded-lg">Close</button></div></div>
+
+<div id="uploadModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-96">
+        <h3 class="text-xl font-bold mb-4">Upload File</h3>
+        <input type="file" id="uploadFileInput" required class="w-full border rounded-lg p-2 mb-3">
+        <textarea id="fileDescription" placeholder="Description (optional)" rows="2" class="w-full border rounded-lg p-2 mb-3"></textarea>
+        <button onclick="uploadFile()" class="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700">
+            <i class="fas fa-upload mr-2"></i>Upload
+        </button>
+        <button onclick="hideUploadModal()" class="w-full mt-2 bg-gray-300 py-2 rounded-lg hover:bg-gray-400">Cancel</button>
+    </div>
+</div>
+
+
+<script>
+    let currentUser = null, jwtToken = null, stompClient = null, currentChatUser = null, taskChart = null;
+    let onlineUsers = new Set();
+
+    function showToast(message, type) {
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerText = message;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+
+    // ========== AUTH ==========
+    async function handleLogin() {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: document.getElementById('loginEmail').value, password: document.getElementById('loginPassword').value })
+        });
+        if (response.ok) {
+            const data = await response.json();
+            jwtToken = data.token; currentUser = data;
+            localStorage.setItem('token', jwtToken); localStorage.setItem('user', JSON.stringify(data));
+            showDashboard(); showToast('Login successful!', 'success');
+        } else { showToast('Login failed!', 'error'); }
+    }
+
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const response = await fetch('/api/auth/register', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fullName: document.getElementById('regFullName').value, email: document.getElementById('regEmail').value, password: document.getElementById('regPassword').value, tenantName: document.getElementById('regTenantName').value, subdomain: document.getElementById('regSubdomain').value })
+        });
+        if (response.ok) { showToast('Registration successful!', 'success'); showLogin(); }
+        else { showToast('Registration failed!', 'error'); }
+    });
+
+    document.getElementById('showRegister').onclick = () => { document.getElementById('loginContainer').classList.add('hidden'); document.getElementById('registerContainer').classList.remove('hidden'); };
+    document.getElementById('showLogin').onclick = () => { document.getElementById('registerContainer').classList.add('hidden'); document.getElementById('loginContainer').classList.remove('hidden'); };
+    function showLogin() { document.getElementById('loginContainer').classList.remove('hidden'); document.getElementById('registerContainer').classList.add('hidden'); document.getElementById('dashboardContainer').classList.add('hidden'); }
+    
+    function showDashboard() {
+        document.getElementById('loginContainer').classList.add('hidden'); document.getElementById('registerContainer').classList.add('hidden'); document.getElementById('dashboardContainer').classList.remove('hidden');
+        document.getElementById('userName').innerText = currentUser.fullName; document.getElementById('userRole').innerText = currentUser.role; document.getElementById('workspaceName').innerHTML = currentUser.tenantName || 'Workspace';
+        loadDashboard(); loadTasks(); loadMyTasks(); loadFiles(); connectWebSocket();
+    }
+    
+    function logout() { if(stompClient) stompClient.disconnect(); localStorage.clear(); location.reload(); }
+
+    const savedToken = localStorage.getItem('token'), savedUser = localStorage.getItem('user');
+    if (savedToken && savedUser) { jwtToken = savedToken; currentUser = JSON.parse(savedUser); showDashboard(); }
+
+    // ========== DASHBOARD ==========
+    async function loadDashboard() {
+        const response = await fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+        const tasks = await response.json();
+        const total = tasks.length, available = tasks.filter(t => t.status === 'AVAILABLE').length, inProgress = tasks.filter(t => t.status === 'IN_PROGRESS').length, completed = tasks.filter(t => t.status === 'COMPLETED').length;
+        document.getElementById('totalTasks').innerText = total; document.getElementById('availableTasks').innerText = available; document.getElementById('inProgressTasks').innerText = inProgress; document.getElementById('completedTasks').innerText = completed;
+        if (taskChart) taskChart.destroy();
+        taskChart = new Chart(document.getElementById('taskChart'), { type: 'doughnut', data: { labels: ['Available', 'In Progress', 'Completed'], datasets: [{ data: [available, inProgress, completed], backgroundColor: ['#10b981', '#f59e0b', '#3b82f6'] }] } });
+    }
+
+    // ========== TASKS ==========
+    async function loadTasks() {
+        const response = await fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+        const tasks = await response.json();
+        document.getElementById('tasksList').innerHTML = tasks.length ? tasks.map(task => `
+            <div class="task-card p-5">
+                <div class="flex justify-between items-start mb-3"><h3 class="font-bold">${escapeHtml(task.title)}</h3><span class="status-badge status-${task.status}">${task.status}</span></div>
+                <p class="text-sm text-gray-600 mb-3">${escapeHtml(task.description?.substring(0, 100) || 'No description')}</p>
+                <div class="text-xs text-gray-500 mb-3"><i class="fas fa-user mr-1"></i>Created by: ${escapeHtml(task.createdByName)}</div>
+                ${task.status === 'AVAILABLE' ? `<button onclick="takeTask(${task.id}, this)" class="w-full bg-green-500 text-white py-2 rounded-lg text-sm">Take Task</button>` : 
+                  task.status === 'IN_PROGRESS' && task.assignedTo === currentUser.id ? `<button onclick="showCompleteModal(${task.id})" class="w-full bg-blue-500 text-white py-2 rounded-lg text-sm">Complete Task</button>` :
+                  task.status === 'COMPLETED' ? `<button onclick="viewTaskDetails(${task.id})" class="w-full bg-gray-500 text-white py-2 rounded-lg text-sm">View Details</button>` : ''}
+            </div>`).join('') : '<p class="text-center text-gray-500">No tasks</p>';
+    }
+
+    async function loadMyTasks() {
+        const response = await fetch('/api/tasks/my-tasks', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+        const tasks = await response.json();
+        document.getElementById('myTasksList').innerHTML = tasks.length ? tasks.map(task => `
+            <div class="task-card p-5">
+                <div class="flex justify-between items-start mb-3"><h3 class="font-bold">${escapeHtml(task.title)}</h3><span class="status-badge status-${task.status}">${task.status}</span></div>
+                <p class="text-sm text-gray-600 mb-3">${escapeHtml(task.description?.substring(0, 100) || 'No description')}</p>
+                ${task.status === 'IN_PROGRESS' ? `<button onclick="showCompleteModal(${task.id})" class="w-full bg-blue-500 text-white py-2 rounded-lg text-sm">Complete Task</button>` :
+                  task.status === 'COMPLETED' ? `<button onclick="viewTaskDetails(${task.id})" class="w-full bg-gray-500 text-white py-2 rounded-lg text-sm">View Details</button>` : ''}
+            </div>`).join('') : '<p class="text-center text-gray-500">No tasks assigned</p>';
+    }
+
+    async function takeTask(taskId, btn) {
+        const original = btn.innerHTML; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Taking...'; btn.disabled = true;
+        const response = await fetch(`/api/tasks/${taskId}/take`, { method: 'PUT', headers: { 'Authorization': `Bearer ${jwtToken}` } });
+        if (response.ok) { showToast('Task taken!', 'success'); loadTasks(); loadMyTasks(); loadDashboard(); }
+        else { showToast('Failed', 'error'); btn.innerHTML = original; btn.disabled = false; }
+    }
+
+    // ========== COMPLETE TASK ==========
+    let currentTaskId = null;
+    function showCompleteModal(taskId) { currentTaskId = taskId; document.getElementById('completeTaskModal').classList.remove('hidden'); document.getElementById('completeTaskModal').style.display = 'flex'; }
+    function hideCompleteTaskModal() { document.getElementById('completeTaskModal').classList.add('hidden'); document.getElementById('completeTaskModal').style.display = 'none'; }
+	async function submitCompleteTask() {
+	    const description = document.getElementById('completionDescription').value;
+	    if (!description) { showToast('Please enter description', 'error'); return; }
+	    
+	    const attachment = document.getElementById('taskAttachment').files[0];
+	    const btn = document.getElementById('completeBtn');
+	    const original = btn.innerHTML;
+	    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+	    btn.disabled = true;
+	    
+	    // Create progress for task completion
+	    let progressDiv = document.getElementById('taskProgress');
+	    if (!progressDiv) {
+	        progressDiv = document.createElement('div');
+	        progressDiv.id = 'taskProgress';
+	        progressDiv.className = 'progress-container mt-2';
+	        progressDiv.innerHTML = `
+	            <div class="progress-bar" id="taskProgressBar"></div>
+	            <span class="progress-text" id="taskProgressText">0%</span>
+	        `;
+	        document.getElementById('completeTaskModal').querySelector('.modal-content')?.appendChild(progressDiv);
+	    }
+	    
+	    const progressBar = document.getElementById('taskProgressBar');
+	    const progressText = document.getElementById('taskProgressText');
+	    progressDiv.style.display = 'block';
+	    progressBar.style.width = '0%';
+	    progressText.innerText = '0%';
+	    
+	    const formData = new FormData();
+	    formData.append('completionDescription', description);
+	    if (attachment) formData.append('attachment', attachment);
+	    
+	    const xhr = new XMLHttpRequest();
+	    
+	    if (attachment) {
+	        xhr.upload.addEventListener('progress', function(e) {
+	            if (e.lengthComputable) {
+	                const percent = Math.round((e.loaded / e.total) * 100);
+	                progressBar.style.width = percent + '%';
+	                progressText.innerText = percent + '%';
+	            }
+	        });
+	    }
+	    
+	    xhr.addEventListener('load', function() {
+	        if (xhr.status === 200) {
+	            showToast('Task completed successfully!', 'success');
+	            hideCompleteTaskModal();
+	            loadTasks();
+	            loadMyTasks();
+	            loadDashboard();
+	        } else {
+	            showToast('Failed to complete task', 'error');
+	        }
+	        btn.innerHTML = original;
+	        btn.disabled = false;
+	        progressDiv.style.display = 'none';
+	    });
+	    
+	    xhr.open('PUT', `/api/tasks/${currentTaskId}/complete`);
+	    xhr.setRequestHeader('Authorization', `Bearer ${jwtToken}`);
+	    xhr.send(formData);
+	}
+    // ========== VIEW TASK DETAILS ==========
+    async function viewTaskDetails(taskId) {
+        const response = await fetch(`/api/tasks/${taskId}`, { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+        const task = await response.json();
+        const hasAttachment = task.attachmentUrl && task.attachmentUrl !== 'null';
+        document.getElementById('viewTaskContent').innerHTML = `
+            <div class="space-y-3"><div><label class="font-bold">Title:</label><p>${escapeHtml(task.title)}</p></div>
+            <div><label class="font-bold">Description:</label><p>${escapeHtml(task.description || 'No description')}</p></div>
+            <div><label class="font-bold">Status:</label><p><span class="status-badge status-${task.status}">${task.status}</span></p></div>
+            <div><label class="font-bold">Priority:</label><p>${task.priority}</p></div>
+            ${task.completionDescription ? `<div><label class="font-bold text-green-600">Completion:</label><p>${escapeHtml(task.completionDescription)}</p></div>` : ''}
+            ${hasAttachment ? `<div><label class="font-bold text-blue-600">Attachment:</label><p><a href="#" onclick="downloadFile(${task.id}, '${task.attachmentName}')" class="text-blue-500 hover:underline"><i class="fas fa-download"></i> Download ${task.attachmentName}</a></p></div>` : ''}
+            <div><label class="font-bold">Created by:</label><p>${escapeHtml(task.createdByName)}</p></div>
+            <div><label class="font-bold">Created at:</label><p>${new Date(task.createdAt).toLocaleString()}</p></div></div>`;
+        document.getElementById('viewTaskModal').classList.remove('hidden'); document.getElementById('viewTaskModal').style.display = 'flex';
+    }
+    
+    async function downloadFile(taskId, fileName) {
+        const response = await fetch(`/api/tasks/download/${taskId}`, { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+        if (response.ok) { const blob = await response.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = fileName; a.click(); URL.revokeObjectURL(url); showToast('Download started', 'success'); }
+        else { showToast('File not found', 'error'); }
+    }
+    function hideViewTaskModal() { document.getElementById('viewTaskModal').classList.add('hidden'); document.getElementById('viewTaskModal').style.display = 'none'; }
+
+    // ========== CREATE TASK ==========
+    function showCreateTaskModal() { document.getElementById('createTaskModal').classList.remove('hidden'); document.getElementById('createTaskModal').style.display = 'flex'; }
+    function hideCreateTaskModal() { document.getElementById('createTaskModal').classList.add('hidden'); document.getElementById('createTaskModal').style.display = 'none'; }
+    
+    async function createTask() {
+        const title = document.getElementById('taskTitle').value.trim();
+        if (!title) { showToast('Title required', 'error'); return; }
+        const taskData = { title, description: document.getElementById('taskDescription').value, priority: document.getElementById('taskPriority').value, dueDate: null };
+        const btn = event.target; const original = btn.innerHTML; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...'; btn.disabled = true;
+        const response = await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${jwtToken}` }, body: JSON.stringify(taskData) });
+        if (response.ok) { showToast('Task created!', 'success'); hideCreateTaskModal(); loadTasks(); loadDashboard(); }
+        else { showToast('Failed', 'error'); }
+        btn.innerHTML = original; btn.disabled = false;
+    }
+
+    // ========== WEBSOCKET CHAT ==========
+    function connectWebSocket() {
+        const socket = new SockJS('/ws');
+        stompClient = Stomp.over(socket);
+        
+        stompClient.connect({ 'Authorization': `Bearer ${jwtToken}` }, function(frame) {
+            console.log('WebSocket connected!');
+            showToast('Connected to chat', 'success');
+            
+            // Subscribe to group chat
+            stompClient.subscribe(`/topic/group/${currentUser.tenantId}`, function(msg) {
+                const message = JSON.parse(msg.body);
+                displayGroupMessage(message);
+            });
+            
+            // Subscribe to private messages - CRITICAL for receiving
+            stompClient.subscribe(`/user/queue/private`, function(msg) {
+                const message = JSON.parse(msg.body);
+                console.log('Private message received:', message);
+                displayPrivateMessage(message);
+            });
+            
+            loadUsers();
+        }, function(error) {
+            console.error('WebSocket error:', error);
+            showToast('Chat connection failed', 'error');
+        });
+    }
+    
+    function sendGroupMessage() {
+        const message = document.getElementById('groupMessageInput').value.trim();
+        if (!message || !stompClient) return;
+        stompClient.send('/app/chat.group.send', {}, JSON.stringify({ message, isGroup: true }));
+        document.getElementById('groupMessageInput').value = '';
+    }
+    
+    function sendPrivateMessage() {
+        const message = document.getElementById('privateMessageInput').value.trim();
+        if (!message || !stompClient || !currentChatUser) {
+            showToast('Select a user to chat first', 'error');
+            return;
+        }
+        
+        const msg = { receiverId: currentChatUser.id, message: message, isGroup: false };
+        stompClient.send('/app/chat.private.send', {}, JSON.stringify(msg));
+        document.getElementById('privateMessageInput').value = '';
+        
+        // Display own message immediately
+        const container = document.getElementById('privateChatMessages');
+        container.innerHTML += `
+            <div class="chat-message message-right">
+                <div class="message-bubble-right">
+                    <div>${escapeHtml(message)}</div>
+                    <div class="text-xs opacity-70 mt-1">Just now</div>
+                </div>
+            </div>
+        `;
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    function displayGroupMessage(msg) {
+        const container = document.getElementById('groupChatMessages');
+        const isOwn = msg.senderId === currentUser.id;
+        container.innerHTML += `
+            <div class="chat-message ${isOwn ? 'message-right' : 'message-left'}">
+                <div class="${isOwn ? 'message-bubble-right' : 'message-bubble-left'}">
+                    ${!isOwn ? `<div class="text-xs font-bold mb-1">${escapeHtml(msg.senderName)}</div>` : ''}
+                    <div>${escapeHtml(msg.message)}</div>
+                    <div class="text-xs opacity-70 mt-1">${new Date().toLocaleTimeString()}</div>
+                </div>
+            </div>
+        `;
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    function displayPrivateMessage(msg) {
+        console.log('Displaying private message from:', msg.senderName);
+        
+        // Show notification
+        if (msg.senderId !== currentUser.id) {
+            showToast(`📩 New message from ${msg.senderName}`, 'info');
+        }
+        
+        // If this chat is open, display message
+        if (currentChatUser && msg.senderId === currentChatUser.id) {
+            const container = document.getElementById('privateChatMessages');
+            container.innerHTML += `
+                <div class="chat-message message-left">
+                    <div class="message-bubble-left">
+                        <div>${escapeHtml(msg.message)}</div>
+                        <div class="text-xs opacity-70 mt-1">${new Date().toLocaleTimeString()}</div>
+                    </div>
+                </div>
+            `;
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+    
+    async function loadUsers() {
+        try {
+            const response = await fetch('/api/users', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+            if (response.ok) {
+                const users = await response.json();
+                document.getElementById('usersList').innerHTML = users.map(user => `
+                    <div onclick="startPrivateChat(${user.id}, '${escapeHtml(user.name)}')" 
+                         class="p-3 cursor-pointer hover:bg-gray-50 border-b flex items-center justify-between">
+                        <div><i class="fas fa-user-circle mr-2"></i>${escapeHtml(user.name)}</div>
+                        <div class="text-green-500"><i class="fas fa-circle text-xs"></i><span class="text-xs ml-1">Online</span></div>
+                    </div>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('Error loading users:', error);
+        }
+    }
+    
+    async function loadPrivateChatHistory(userId) {
+        try {
+            const response = await fetch(`/api/chat/private/history/${userId}`, {
+                headers: { 'Authorization': `Bearer ${jwtToken}` }
+            });
+            if (response.ok) {
+                const messages = await response.json();
+                const container = document.getElementById('privateChatMessages');
+                container.innerHTML = '';
+                
+                if (messages.length === 0) {
+                    container.innerHTML = '<div class="text-center text-gray-400 py-4">No messages yet. Start chatting!</div>';
+                } else {
+                    messages.forEach(msg => {
+                        const isOwn = msg.senderId === currentUser.id;
+                        container.innerHTML += `
+                            <div class="chat-message ${isOwn ? 'message-right' : 'message-left'}">
+                                <div class="${isOwn ? 'message-bubble-right' : 'message-bubble-left'}">
+                                    ${!isOwn ? `<div class="text-xs font-bold mb-1">${escapeHtml(msg.senderName)}</div>` : ''}
+                                    <div>${escapeHtml(msg.message)}</div>
+                                    <div class="text-xs opacity-70 mt-1">${new Date(msg.createdAt).toLocaleTimeString()}</div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                container.scrollTop = container.scrollHeight;
+            }
+        } catch (error) {
+            console.error('Error loading private history:', error);
+        }
+    }
+    
+    function startPrivateChat(userId, userName) {
+        currentChatUser = { id: userId, name: userName };
+        document.getElementById('privateChatHeader').innerHTML = `
+            <div class="flex items-center gap-2">
+                <i class="fas fa-user-circle text-xl"></i>
+                <span class="font-bold">${escapeHtml(userName)}</span>
+                <span class="text-green-500 text-xs"><i class="fas fa-circle text-xs"></i> Online</span>
+            </div>
+        `;
+        loadPrivateChatHistory(userId);
+        document.getElementById('privateMessageInput').focus();
+    }
+
+    // ========== FILE TRANSFER ==========
+	async function loadFiles() {
+	    const response = await fetch('/api/files', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+	    const files = await response.json();
+	    document.getElementById('fileList').innerHTML = files.length ? files.map(file => `
+	        <tr class="border-b hover:bg-gray-50">
+	            <td class="px-6 py-3"><i class="fas fa-file mr-2"></i>${escapeHtml(file.fileName)}</td>
+	            <td class="px-6 py-3">${file.fileSize}</td>
+	            <td class="px-6 py-3">${escapeHtml(file.uploadedBy)}</td>
+	            <td class="px-6 py-3">${file.downloadCount || 0}</td>
+	            <td class="px-6 py-3">
+	                <button onclick="downloadFileFromCenter(${file.id}, '${escapeHtml(file.fileName)}')" class="text-blue-600 hover:text-blue-800 mr-3">
+	                    <i class="fas fa-download"></i>
+	                </button>
+	                <button onclick="deleteFileFromCenter(${file.id})" class="text-red-600 hover:text-red-800">
+	                    <i class="fas fa-trash"></i>
+	                </button>
+	            </td>
+	        </tr>
+	    `).join('') : '<tr><td colspan="5" class="text-center py-8">No files</td></tr>';
+	}
+    
+	function showUploadModal() { 
+	    document.getElementById('uploadModal').classList.remove('hidden'); 
+	    document.getElementById('uploadModal').style.display = 'flex'; 
+	    // Reset form
+	    document.getElementById('uploadFileInput').value = '';
+	    document.getElementById('fileDescription').value = '';
+	}
+
+	function hideUploadModal() { 
+	    document.getElementById('uploadModal').classList.add('hidden'); 
+	    document.getElementById('uploadModal').style.display = 'none'; 
+	}
+	
+	
+	async function uploadFile() {
+	    const file = document.getElementById('uploadFileInput').files[0];
+	    if (!file) { 
+	        showToast('Please select a file', 'error'); 
+	        return; 
+	    }
+	    
+	    const btn = event.target;
+	    const originalText = btn.innerHTML;
+	    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+	    btn.disabled = true;
+	    
+	    const formData = new FormData();
+	    formData.append('file', file);
+	    formData.append('description', document.getElementById('fileDescription').value);
+	    
+	    try {
+	        const response = await fetch('/api/files/upload', {
+	            method: 'POST',
+	            headers: { 'Authorization': `Bearer ${jwtToken}` },
+	            body: formData
+	        });
+	        
+	        if (response.ok) {
+	            showToast('File uploaded successfully!', 'success');
+	            hideUploadModal();
+	            loadFiles();
+	            document.getElementById('uploadFileInput').value = '';
+	            document.getElementById('fileDescription').value = '';
+	        } else {
+	            const error = await response.text();
+	            showToast('Upload failed: ' + error, 'error');
+	        }
+	    } catch (error) {
+	        console.error('Upload error:', error);
+	        showToast('Error uploading file', 'error');
+	    } finally {
+	        btn.innerHTML = originalText;
+	        btn.disabled = false;
+	    }
+	}
+	
+	
+	async function downloadFileFromCenter(fileId, fileName) {
+	    showToast('Downloading file...', 'info');
+	    
+	    try {
+	        const response = await fetch(`/api/files/download/${fileId}`, {
+	            method: 'GET',
+	            headers: { 'Authorization': `Bearer ${jwtToken}` }
+	        });
+	        
+	        if (response.ok) {
+	            // Get the blob from response
+	            const blob = await response.blob();
+	            
+	            // Create a download link
+	            const url = window.URL.createObjectURL(blob);
+	            const a = document.createElement('a');
+	            a.href = url;
+	            a.download = fileName || 'download';
+	            document.body.appendChild(a);
+	            a.click();
+	            document.body.removeChild(a);
+	            window.URL.revokeObjectURL(url);
+	            
+	            showToast('Download started!', 'success');
+	            loadFiles(); // Refresh to update download count
+	        } else {
+	            const error = await response.text();
+	            showToast('Download failed: ' + error, 'error');
+	        }
+	    } catch (error) {
+	        console.error('Download error:', error);
+	        showToast('Error downloading file', 'error');
+	    }
+	}
+	
+		async function deleteFileFromCenter(fileId) {
+	    if (!confirm('Are you sure you want to delete this file?')) return;
+	    
+	    showToast('Deleting file...', 'info');
+	    
+	    try {
+	        const response = await fetch(`/api/files/${fileId}`, {
+	            method: 'DELETE',
+	            headers: { 'Authorization': `Bearer ${jwtToken}` }
+	        });
+	        
+	        if (response.ok) {
+	            showToast('File deleted successfully!', 'success');
+	            loadFiles(); // Refresh the file list
+	        } else {
+	            const error = await response.text();
+	            showToast('Failed to delete: ' + error, 'error');
+	        }
+	    } catch (error) {
+	        console.error('Delete error:', error);
+	        showToast('Error deleting file', 'error');
+	    }
+	}
+    // ========== NAVIGATION ==========
+    function showSection(section) {
+        document.querySelectorAll('.section').forEach(el => el.classList.add('hidden'));
+        document.getElementById(`${section}Section`).classList.remove('hidden');
+        if (section === 'dashboard') loadDashboard();
+        if (section === 'tasks') loadTasks();
+        if (section === 'myTasks') loadMyTasks();
+        if (section === 'groupChat') loadGroupChatHistory();
+        if (section === 'files') loadFiles();
+    }
+    
+    async function loadGroupChatHistory() {
+        const response = await fetch('/api/chat/group/history', { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+        const messages = await response.json();
+        const container = document.getElementById('groupChatMessages');
+        container.innerHTML = '';
+        messages.forEach(msg => {
+            const isOwn = msg.senderId === currentUser.id;
+            container.innerHTML += `<div class="chat-message ${isOwn ? 'message-right' : 'message-left'}"><div class="${isOwn ? 'message-bubble-right' : 'message-bubble-left'}">${!isOwn ? `<div class="text-xs font-bold mb-1">${escapeHtml(msg.senderName)}</div>` : ''}<div>${escapeHtml(msg.message)}</div><div class="text-xs opacity-70 mt-1">${new Date(msg.createdAt).toLocaleTimeString()}</div></div></div>`;
+        });
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+    
+    // Enter key handlers
+    document.getElementById('groupMessageInput')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendGroupMessage(); });
+    document.getElementById('privateMessageInput')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendPrivateMessage(); });
+</script>
+</body>
+</html>
